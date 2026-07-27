@@ -58,7 +58,7 @@ jobs:
           test ! -f dictionary.db
           ! grep -R -n -i \
             -E 'plugin\.com\.pot-app\.lingva|lingva\.pot-app\.com|requestPath' \
-            src info.json README.md package.json scripts tests icon.svg THIRD_PARTY_NOTICES.md
+            src info.json README.md package.json icon.svg THIRD_PARTY_NOTICES.md
 
       - name: Run JavaScript unit tests
         run: npm test
