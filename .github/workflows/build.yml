@@ -96,6 +96,7 @@ jobs:
           assert meta['source_file'] == 'ecdict.csv'
           assert meta['source_commit'] == 'bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b'
           assert meta['source_license'] == 'MIT'
+          assert meta['explicit_lemmas'] > 0
           assert meta['lemma_links_applied'] > 0
 
           connection = sqlite3.connect(root / 'dictionary.db')
@@ -110,7 +111,8 @@ jobs:
               "SELECT word, lemma, translation FROM dictionary ORDER BY word LIMIT 5"
           ).fetchall()
           lemma_samples = dict(connection.execute(
-              "SELECT word, lemma FROM dictionary WHERE word IN ('services', 'retries', 'apples')"
+              "SELECT word, lemma FROM dictionary WHERE word IN "
+              "('translate', 'translated', 'service', 'services', 'retry', 'retries', 'apple', 'apples')"
           ).fetchall())
           connection.close()
 
@@ -118,6 +120,8 @@ jobs:
               'entries': entry_count,
               'translated_entries': translated_count,
               'aliases': alias_count,
+              'explicit_lemmas': meta['explicit_lemmas'],
+              'generated_lemma_links': meta['generated_lemma_links'],
               'lemma_links_applied': meta['lemma_links_applied'],
               'samples': sample_rows,
               'lemma_samples': lemma_samples,
@@ -126,8 +130,13 @@ jobs:
           assert entry_count > 100000, meta
           assert translated_count == entry_count
           assert sample_rows and all(row[0] and row[1] and row[2].strip() for row in sample_rows)
+          assert lemma_samples['translate'] == 'translate'
+          assert lemma_samples['translated'] == 'translate'
+          assert lemma_samples['service'] == 'service'
           assert lemma_samples['services'] == 'service'
+          assert lemma_samples['retry'] == 'retry'
           assert lemma_samples['retries'] == 'retry'
+          assert lemma_samples['apple'] == 'apple'
           assert lemma_samples['apples'] == 'apple'
           PY
           grep -q "${ECDICT_COMMIT}" THIRD_PARTY_NOTICES.md
