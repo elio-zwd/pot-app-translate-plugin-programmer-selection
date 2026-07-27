@@ -38,20 +38,39 @@ jobs:
           set -euo pipefail
           node <<'NODE'
           const info = require('./info.json');
-          const expectedKeys = ['outputStyle', 'dictionaryMode', 'identifierType', 'acronymStyle'];
+          const expectedKeys = [
+            'outputStyle', 'dictionaryMode', 'identifierType', 'acronymStyle',
+            'aiMode', 'apiKey', 'model', 'sendScope'
+          ];
           if (info.id !== 'plugin.com.elio.programmer-selection-translator') throw new Error('unexpected plugin id');
           if (info.plugin_type !== 'translate') throw new Error('unexpected plugin type');
           if (info.icon !== 'icon.svg') throw new Error('unexpected icon');
           if (info.display !== '程序员划词翻译') throw new Error('unexpected display');
           if (info.homepage !== 'https://github.com/elio-zwd/pot-app-translate-plugin-programmer-selection') throw new Error('unexpected homepage');
-          const keys = (info.needs || []).map((item) => item.key);
-          for (const key of expectedKeys) if (!keys.includes(key)) throw new Error(`missing config: ${key}`);
+          const needs = info.needs || [];
+          const keys = needs.map((item) => item.key);
+          if (keys.length !== expectedKeys.length || expectedKeys.some((key) => !keys.includes(key))) {
+            throw new Error(`unexpected config keys: ${keys.join(',')}`);
+          }
           if (keys.includes('requestPath')) throw new Error('Lingva requestPath remains');
+          const byKey = Object.fromEntries(needs.map((item) => [item.key, item]));
+          if (byKey.aiMode.type !== 'select' || Object.keys(byKey.aiMode.options)[0] !== 'off') {
+            throw new Error('aiMode must default to off');
+          }
+          if (byKey.sendScope.type !== 'select' || Object.keys(byKey.sendScope.options)[0] !== 'unknown_tokens') {
+            throw new Error('sendScope must default to unknown_tokens');
+          }
+          if (byKey.apiKey.type !== 'input' || byKey.apiKey.display !== 'Gemini API Key（设置页明文）') {
+            throw new Error('apiKey plaintext warning is missing');
+          }
+          if (byKey.model.type !== 'input') throw new Error('model input is missing');
           NODE
           test -f src/runtime-01.js
+          test -f src/runtime-02-gemini.js
           test -f scripts/build_runtime.py
           test -f scripts/build_dictionary.py
           test -f tests/main.test.cjs
+          test -f tests/gemini.test.cjs
           test -f icon.svg
           test -f THIRD_PARTY_NOTICES.md
           test ! -f lingva.svg
@@ -142,13 +161,21 @@ jobs:
           grep -q "${ECDICT_COMMIT}" THIRD_PARTY_NOTICES.md
           test -s main.js
           grep -q 'plugin.com.elio.programmer-selection-translator' main.js
+          grep -q 'gemini-3.6-flash' main.js
+          grep -q 'generativelanguage.googleapis.com/v1beta/models' main.js
+          grep -q "'x-goog-api-key': apiKey" main.js
+          grep -q "responseMimeType: 'application/json'" main.js
+          ! grep -F '?key=' main.js
           ! grep -i -E 'lingva|requestPath|plugin\.com\.elio\.code-identifier' main.js
+          ! grep -F 'test-gemini-key-not-real' main.js
 
       - name: Scan for API key leakage
         run: |
           set -euo pipefail
           ! grep -R -n -E 'AIza[0-9A-Za-z_-]{20,}' \
             --exclude-dir=.git --exclude='*.potext' --exclude='dictionary.db' .
+          ! grep -R -n -F 'test-gemini-key-not-real' \
+            main.js info.json README.md GEMINI-HANDOFF.md THIRD_PARTY_NOTICES.md icon.svg
           test ! -f .env
           test ! -f .env.local
 
@@ -170,6 +197,7 @@ jobs:
           test ! -e /tmp/potext-check/.env
           test ! -e /tmp/potext-check/lingva.svg
           ! grep -R -n -E 'AIza[0-9A-Za-z_-]{20,}|test-gemini-key-not-real' /tmp/potext-check
+          ! grep -R -n -F '?key=' /tmp/potext-check --exclude=dictionary.db
           unzip -l "dist/${PLUGIN_ID}.potext"
           ls -lh "dist/${PLUGIN_ID}.potext"
 
