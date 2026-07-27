@@ -1,0 +1,10 @@
+main.js
+dictionary.db
+dictionary.meta.json
+dist/
+node_modules/
+*.potext
+.env
+.env.*
+__pycache__/
+*.pyc

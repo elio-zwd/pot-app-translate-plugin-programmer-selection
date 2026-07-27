@@ -1,36 +1,63 @@
 {
   "id": "plugin.com.elio.programmer-selection-translator",
   "plugin_type": "translate",
-  "icon": "lingva.svg",
+  "icon": "icon.svg",
   "display": "程序员划词翻译",
   "homepage": "https://github.com/elio-zwd/pot-app-translate-plugin-programmer-selection",
-  "needs": [{ "key": "requestPath", "display": "请求地址" }],
+  "needs": [
+    {
+      "key": "outputStyle",
+      "display": "输出格式",
+      "type": "select",
+      "options": {
+        "report": "完整分析",
+        "camel": "camelCase",
+        "pascal": "PascalCase",
+        "snake": "snake_case",
+        "screaming": "SCREAMING_SNAKE_CASE",
+        "kebab": "kebab-case",
+        "words": "拆分词组",
+        "chinese": "仅中文含义"
+      }
+    },
+    {
+      "key": "dictionaryMode",
+      "display": "本地词典显示",
+      "type": "select",
+      "options": {
+        "both": "编程术语 + 普通词义",
+        "programming": "仅编程术语优先",
+        "general": "仅普通英语词典"
+      }
+    },
+    {
+      "key": "identifierType",
+      "display": "标识符类型",
+      "type": "select",
+      "options": {
+        "auto": "自动判断",
+        "function": "函数名",
+        "variable": "变量名",
+        "boolean": "布尔变量",
+        "class": "类名",
+        "constant": "常量/宏",
+        "file": "文件名"
+      }
+    },
+    {
+      "key": "acronymStyle",
+      "display": "缩写格式",
+      "type": "select",
+      "options": {
+        "standard": "标准驼峰（HTTP → Http）",
+        "preserve": "保留大写（HTTP → HTTP）"
+      }
+    }
+  ],
   "language": {
     "auto": "auto",
-    "zh_cn": "zh",
-    "zh_tw": "zh_HANT",
-    "en": "en",
-    "ja": "ja",
-    "ko": "ko",
-    "fr": "fr",
-    "es": "es",
-    "ru": "ru",
-    "de": "de",
-    "it": "it",
-    "tr": "tr",
-    "pt_pt": "pt",
-    "pt_br": "pt",
-    "vi": "vi",
-    "id": "id",
-    "th": "th",
-    "ms": "ms",
-    "ar": "ar",
-    "hi": "hi",
-    "mn_cy": "mn",
-    "mn_mo": "mn",
-    "km": "km",
-    "nb_no": "no",
-    "nn_no": "no",
-    "fa": "fa"
+    "zh_cn": "zh_cn",
+    "zh_tw": "zh_tw",
+    "en": "en"
   }
 }

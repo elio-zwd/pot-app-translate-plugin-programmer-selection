@@ -1,0 +1,15 @@
+{
+  "name": "pot-programmer-selection-translator",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Offline-first Pot plugin for programming-aware selection translation and identifier conversion.",
+  "scripts": {
+    "build:runtime": "python scripts/build_runtime.py",
+    "test": "python scripts/build_runtime.py && node --test tests/*.test.cjs",
+    "test:dictionary": "python scripts/test_dictionary_build.py"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "GPL-3.0-only"
+}
