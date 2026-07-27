@@ -1,6 +1,16 @@
-# Pot-App 翻译插件模板仓库 (以 [Lingva](https://github.com/TheDavidDelta/lingva-translate) 为例)
+# 程序员划词翻译 (Programmer Selection Translator)
 
-### 此仓库为模板仓库，编写插件时可以直接由此仓库创建插件仓库
+> 面向程序员的划词翻译插件，支持函数名、变量名、代码标识符、编程术语和普通英语翻译。
+
+## 插件信息
+
+- **中文显示名称**：程序员划词翻译
+- **英文名称**：Programmer Selection Translator
+- **插件 ID**：`plugin.com.elio.programmer-selection-translator`
+- **仓库地址**：[https://github.com/elio-zwd/pot-app-translate-plugin-programmer-selection](https://github.com/elio-zwd/pot-app-translate-plugin-programmer-selection)
+
+---
+
 
 ## 插件编写指南
 

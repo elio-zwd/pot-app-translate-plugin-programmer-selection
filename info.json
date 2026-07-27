@@ -1,9 +1,9 @@
 {
-  "id": "plugin.com.pot-app.lingva",
+  "id": "plugin.com.elio.programmer-selection-translator",
   "plugin_type": "translate",
   "icon": "lingva.svg",
-  "display": "Lingva",
-  "homepage": "https://github.com/pot-app/pot-app-translate-plugin-template",
+  "display": "程序员划词翻译",
+  "homepage": "https://github.com/elio-zwd/pot-app-translate-plugin-programmer-selection",
   "needs": [{ "key": "requestPath", "display": "请求地址" }],
   "language": {
     "auto": "auto",
