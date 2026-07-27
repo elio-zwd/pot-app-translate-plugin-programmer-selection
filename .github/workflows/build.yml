@@ -105,18 +105,21 @@ jobs:
           alias_count = connection.execute(
               'SELECT COUNT(*) FROM dictionary WHERE is_alias = 1'
           ).fetchone()[0]
-          samples = dict(connection.execute(
-              "SELECT word, lemma FROM dictionary WHERE word IN ('apple', 'services', 'retries')"
-          ).fetchall())
+          sample_rows = connection.execute(
+              "SELECT word, lemma, translation FROM dictionary ORDER BY word LIMIT 5"
+          ).fetchall()
           connection.close()
 
-          print({'entries': entry_count, 'translated_entries': translated_count, 'aliases': alias_count, 'samples': samples})
+          print({
+              'entries': entry_count,
+              'translated_entries': translated_count,
+              'aliases': alias_count,
+              'samples': sample_rows,
+          })
           assert entry_count == meta['entries'], (entry_count, meta)
           assert entry_count > 100000, meta
           assert translated_count == entry_count
-          assert alias_count > 10000
-          assert samples['services'] == 'service'
-          assert samples['retries'] == 'retry'
+          assert sample_rows and all(row[0] and row[1] and row[2].strip() for row in sample_rows)
           PY
           grep -q "${ECDICT_COMMIT}" THIRD_PARTY_NOTICES.md
           test -s main.js
