@@ -5,20 +5,25 @@ const GEMINI_STATE_DB_PATH = `sqlite:plugins/translate/${PLUGIN_ID}/gemini_state
 const MAX_GEMINI_KEYS = 20;
 const DEFAULT_MAX_KEY_ATTEMPTS = 5;
 
+function rightRotate32(value, amount) {
+    return (value >>> amount) | (value << (32 - amount));
+}
+
 function sha256Hex(value) {
     let ascii = unescape(encodeURIComponent(String(value || '')));
     const maxWord = Math.pow(2, 32);
     const words = [];
     const bitLength = ascii.length * 8;
-    const hash = [];
+    let hash = [];
     const constants = [];
     const isComposite = {};
-    for (let candidate = 2, count = 0; count < 64; candidate += 1) {
+    let primeCount = 0;
+    for (let candidate = 2; primeCount < 64; candidate += 1) {
         if (isComposite[candidate]) continue;
-        for (let multiple = candidate * candidate; multiple < 313; multiple += candidate) isComposite[multiple] = true;
-        if (count < 8) hash[count] = Math.pow(candidate, 0.5) * maxWord | 0;
-        constants[count] = Math.pow(candidate, 1 / 3) * maxWord | 0;
-        count += 1;
+        for (let multiple = 0; multiple < 313; multiple += candidate) isComposite[multiple] = candidate;
+        hash[primeCount] = Math.pow(candidate, 0.5) * maxWord | 0;
+        constants[primeCount] = Math.pow(candidate, 1 / 3) * maxWord | 0;
+        primeCount += 1;
     }
     ascii += '\x80';
     while (ascii.length % 64 !== 56) ascii += '\x00';
@@ -27,30 +32,42 @@ function sha256Hex(value) {
         if (code >> 8) throw new Error('sha256_ascii_only');
         words[index >> 2] = (words[index >> 2] || 0) | code << ((3 - index) % 4) * 8;
     }
-    words.push(Math.floor(bitLength / maxWord));
+    words.push(Math.floor(bitLength / maxWord) | 0);
     words.push(bitLength);
     for (let block = 0; block < words.length;) {
         const schedule = words.slice(block, block += 16);
-        const previous = hash.slice(0);
+        const previous = hash;
+        hash = hash.slice(0, 8);
         for (let round = 0; round < 64; round += 1) {
             const w15 = schedule[round - 15];
             const w2 = schedule[round - 2];
             const a = hash[0];
             const e = hash[4];
-            const sigma0 = round < 16 ? 0 : ((w15 >>> 7 | w15 << 25) ^ (w15 >>> 18 | w15 << 14) ^ w15 >>> 3);
-            const sigma1 = round < 16 ? 0 : ((w2 >>> 17 | w2 << 15) ^ (w2 >>> 19 | w2 << 13) ^ w2 >>> 10);
-            const word = schedule[round] = round < 16 ? schedule[round] : (schedule[round - 16] + sigma0 + schedule[round - 7] + sigma1) | 0;
-            const temp1 = (hash[7] + ((e >>> 6 | e << 26) ^ (e >>> 11 | e << 21) ^ (e >>> 25 | e << 7))
-                + (e & hash[5] ^ ~e & hash[6]) + constants[round] + word) | 0;
-            const temp2 = (((a >>> 2 | a << 30) ^ (a >>> 13 | a << 19) ^ (a >>> 22 | a << 10))
-                + (a & hash[1] ^ a & hash[2] ^ hash[1] & hash[2])) | 0;
-            hash.unshift((temp1 + temp2) | 0);
+            const word = schedule[round] = round < 16 ? schedule[round] : (
+                schedule[round - 16]
+                + (rightRotate32(w15, 7) ^ rightRotate32(w15, 18) ^ (w15 >>> 3))
+                + schedule[round - 7]
+                + (rightRotate32(w2, 17) ^ rightRotate32(w2, 19) ^ (w2 >>> 10))
+            ) | 0;
+            const temp1 = hash[7]
+                + (rightRotate32(e, 6) ^ rightRotate32(e, 11) ^ rightRotate32(e, 25))
+                + ((e & hash[5]) ^ ((~e) & hash[6]))
+                + constants[round]
+                + word;
+            const temp2 = (rightRotate32(a, 2) ^ rightRotate32(a, 13) ^ rightRotate32(a, 22))
+                + ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+            hash = [(temp1 + temp2) | 0].concat(hash);
             hash[4] = (hash[4] + temp1) | 0;
-            hash.pop();
         }
         for (let index = 0; index < 8; index += 1) hash[index] = (hash[index] + previous[index]) | 0;
     }
-    return hash.map((word) => (word >>> 0).toString(16).padStart(8, '0')).join('');
+    let result = '';
+    for (let index = 0; index < 8; index += 1) {
+        for (let byte = 3; byte >= 0; byte -= 1) {
+            result += ((hash[index] >> (byte * 8)) & 255).toString(16).padStart(2, '0');
+        }
+    }
+    return result;
 }
 
 function normalizeMaxKeyAttempts(value) {
