@@ -52,6 +52,35 @@
         "standard": "标准驼峰（HTTP → Http）",
         "preserve": "保留大写（HTTP → HTTP）"
       }
+    },
+    {
+      "key": "aiMode",
+      "display": "Gemini 语义增强",
+      "type": "select",
+      "options": {
+        "off": "关闭（默认，零网络请求）",
+        "unknown_only": "仅本地未知词",
+        "always": "始终增强"
+      }
+    },
+    {
+      "key": "apiKey",
+      "display": "Gemini API Key（设置页明文）",
+      "type": "input"
+    },
+    {
+      "key": "model",
+      "display": "Gemini 模型（留空使用 gemini-3.6-flash）",
+      "type": "input"
+    },
+    {
+      "key": "sendScope",
+      "display": "Gemini 发送范围",
+      "type": "select",
+      "options": {
+        "unknown_tokens": "仅 token（默认）",
+        "identifier": "完整标识符"
+      }
     }
   ],
   "language": {
