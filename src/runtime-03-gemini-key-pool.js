@@ -71,7 +71,8 @@ function sha256Hex(value) {
 }
 
 function normalizeMaxKeyAttempts(value) {
-    const number = Number(value);
+    const raw = String(value == null ? '' : value).trim();
+    const number = Number(/^v\d+$/.test(raw) ? raw.slice(1) : raw);
     return Number.isInteger(number) && number >= 1 && number <= 20 ? number : DEFAULT_MAX_KEY_ATTEMPTS;
 }
 
