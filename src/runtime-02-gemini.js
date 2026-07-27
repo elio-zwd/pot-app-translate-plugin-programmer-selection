@@ -1,11 +1,16 @@
 /**
- * Gemini 可选语义增强层。
+ * Gemini 可选语义增强编排层。
  *
- * 本文件在第一层运行时之后拼接。标识符拆分、缩写边界和命名格式始终由
- * 第一层本地算法负责；Gemini 只解释未知 token 或补充上下文中文含义。
+ * 标识符拆分、缩写边界和命名格式始终由第一层本地算法负责；Gemini 只解释
+ * 未知 token 或补充最小上下文语义。Key 池与 Interactions 细节位于后续片段。
  */
-const DEFAULT_GEMINI_MODEL = 'gemini-3.6-flash';
-const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash-lite';
+const GEMINI_MODEL_PRESETS = [
+    'gemini-3.5-flash-lite',
+    'gemini-3.6-flash',
+    'gemini-3.5-flash',
+    'gemini-3.1-flash-lite'
+];
 const MAX_GEMINI_REQUEST_TOKENS = 12;
 const MAX_GEMINI_UNKNOWN_TOKENS = 8;
 const MAX_GEMINI_TOKEN_LENGTH = 64;
@@ -13,7 +18,6 @@ const MAX_GEMINI_WORD_TRANSLATION_LENGTH = 120;
 const MAX_GEMINI_DESCRIPTION_LENGTH = 300;
 const MAX_GEMINI_RESPONSE_TEXT_LENGTH = 4000;
 const MAX_GEMINI_TOTAL_RESULT_LENGTH = 1200;
-const DEFAULT_GEMINI_TIMEOUT_MS = 15000;
 
 function normalizeAiMode(value) {
     return ['off', 'unknown_only', 'always'].includes(value) ? value : 'off';
@@ -23,11 +27,26 @@ function normalizeSendScope(value) {
     return value === 'identifier' ? 'identifier' : 'unknown_tokens';
 }
 
-function normalizeGeminiModel(value) {
+function normalizeCustomGeminiModel(value) {
     const model = String(value || '').trim();
-    if (!model) return DEFAULT_GEMINI_MODEL;
-    if (model.length > 80 || !/^[A-Za-z0-9._-]+$/.test(model)) return '';
+    if (!model || model.length > 80 || !/^[A-Za-z0-9._-]+$/.test(model)) return '';
+    if (model.startsWith('models/') || model.includes('/') || model.includes('?') || model.includes('#')) return '';
     return model;
+}
+
+function resolveGeminiModel(config = {}) {
+    const preset = String(config.modelPreset || '').trim();
+    if (preset) {
+        if (GEMINI_MODEL_PRESETS.includes(preset)) return preset;
+        if (preset === 'custom') return normalizeCustomGeminiModel(config.customModel);
+        return '';
+    }
+    const legacy = String(config.model || '').trim();
+    return legacy ? normalizeCustomGeminiModel(legacy) : DEFAULT_GEMINI_MODEL;
+}
+
+function normalizeGeminiModel(value) {
+    return normalizeCustomGeminiModel(value) || (!String(value || '').trim() ? DEFAULT_GEMINI_MODEL : '');
 }
 
 function normalizedUniqueTokens(tokens, limit) {
@@ -75,72 +94,20 @@ function createGeminiRequestContext({ input, words, unknownWords, config }) {
     const semanticUnknown = semanticUnknownWords(words, unknownWords);
     const allTokens = normalizedUniqueTokens(words, MAX_GEMINI_REQUEST_TOKENS);
 
-    if (aiMode === 'off') {
-        return { shouldRequest: false, reason: 'off', requestedTokens: [], payload: null };
-    }
+    if (aiMode === 'off') return { shouldRequest: false, reason: 'off', requestedTokens: [], payload: null };
     if (aiMode === 'unknown_only' && semanticUnknown.length === 0) {
         return { shouldRequest: false, reason: 'local_hit', requestedTokens: [], payload: null };
     }
-
     const requestedTokens = aiMode === 'unknown_only' ? semanticUnknown : allTokens;
-    if (requestedTokens.length === 0) {
-        return { shouldRequest: false, reason: 'no_tokens', requestedTokens: [], payload: null };
-    }
+    if (requestedTokens.length === 0) return { shouldRequest: false, reason: 'no_tokens', requestedTokens: [], payload: null };
 
     const payload = {
         task: '解释程序标识符 token 的中文语义',
         requestedTokens,
-        contextTokens: aiMode === 'unknown_only'
-            ? minimalAdjacentTokens(words, requestedTokens)
-            : allTokens
+        contextTokens: aiMode === 'unknown_only' ? minimalAdjacentTokens(words, requestedTokens) : allTokens
     };
-    if (sendScope === 'identifier') {
-        payload.identifier = String(input || '').slice(0, 500);
-    }
+    if (sendScope === 'identifier') payload.identifier = String(input || '').slice(0, 500);
     return { shouldRequest: true, reason: '', requestedTokens, payload };
-}
-
-function createGeminiRequestBody(payload) {
-    return {
-        systemInstruction: {
-            parts: [{
-                text: [
-                    '你是程序标识符语义解释器。',
-                    '只解释请求 JSON 中 requestedTokens 的中文语义，并结合 contextTokens 给出简短上下文说明。',
-                    '不得推断或输出源码、文件路径、项目名称或请求中不存在的 token。',
-                    '只返回严格 JSON，不要 Markdown，不要代码围栏。',
-                    '返回字段必须且只能是 translatedWords 与 semanticDescription。',
-                    'translatedWords 的键只能来自 requestedTokens。'
-                ].join('')
-            }]
-        },
-        contents: [{
-            role: 'user',
-            parts: [{ text: JSON.stringify(payload) }]
-        }],
-        generationConfig: {
-            responseMimeType: 'application/json',
-            maxOutputTokens: 512
-        }
-    };
-}
-
-function extractGeminiText(responseData) {
-    let data = responseData;
-    if (typeof data === 'string') {
-        try {
-            data = JSON.parse(data);
-        } catch (_) {
-            return '';
-        }
-    }
-    if (!data || typeof data !== 'object' || !Array.isArray(data.candidates)) return '';
-    const candidate = data.candidates[0];
-    if (!candidate || !candidate.content || !Array.isArray(candidate.content.parts)) return '';
-    return candidate.content.parts
-        .map((part) => part && typeof part.text === 'string' ? part.text : '')
-        .join('')
-        .trim();
 }
 
 function isPlainObject(value) {
@@ -153,15 +120,9 @@ function validateGeminiResponseText(text, requestedTokens) {
     if (!rawText || rawText.length > MAX_GEMINI_RESPONSE_TEXT_LENGTH || rawText.includes('```')) {
         return { ok: false, reason: 'invalid_text' };
     }
-
     let parsed;
-    try {
-        parsed = JSON.parse(rawText);
-    } catch (_) {
-        return { ok: false, reason: 'invalid_json' };
-    }
+    try { parsed = JSON.parse(rawText); } catch (_) { return { ok: false, reason: 'invalid_json' }; }
     if (!isPlainObject(parsed)) return { ok: false, reason: 'invalid_shape' };
-
     const allowedTopLevel = new Set(['translatedWords', 'semanticDescription']);
     const topLevelKeys = Object.keys(parsed);
     if (topLevelKeys.length !== 2 || topLevelKeys.some((key) => !allowedTopLevel.has(key))) {
@@ -170,19 +131,15 @@ function validateGeminiResponseText(text, requestedTokens) {
     if (!isPlainObject(parsed.translatedWords) || typeof parsed.semanticDescription !== 'string') {
         return { ok: false, reason: 'invalid_fields' };
     }
-
     const allowedTokens = new Set(requestedTokens || []);
     const translatedEntries = Object.entries(parsed.translatedWords);
     if (translatedEntries.length > allowedTokens.size || translatedEntries.length > MAX_GEMINI_REQUEST_TOKENS) {
         return { ok: false, reason: 'too_many_tokens' };
     }
-
     let totalLength = 0;
     const translatedWords = {};
     for (const [token, translation] of translatedEntries) {
-        if (!allowedTokens.has(token) || typeof translation !== 'string') {
-            return { ok: false, reason: 'unknown_token_key' };
-        }
+        if (!allowedTokens.has(token) || typeof translation !== 'string') return { ok: false, reason: 'unknown_token_key' };
         const value = translation.trim();
         if (!value || value.length > MAX_GEMINI_WORD_TRANSLATION_LENGTH || value.includes('```')) {
             return { ok: false, reason: 'invalid_translation' };
@@ -190,54 +147,29 @@ function validateGeminiResponseText(text, requestedTokens) {
         totalLength += token.length + value.length;
         translatedWords[token] = value;
     }
-
     const semanticDescription = parsed.semanticDescription.trim();
-    if (!semanticDescription || semanticDescription.length > MAX_GEMINI_DESCRIPTION_LENGTH
-        || semanticDescription.includes('```')) {
+    if (!semanticDescription || semanticDescription.length > MAX_GEMINI_DESCRIPTION_LENGTH || semanticDescription.includes('```')) {
         return { ok: false, reason: 'invalid_description' };
     }
     totalLength += semanticDescription.length;
-    if (totalLength > MAX_GEMINI_TOTAL_RESULT_LENGTH) {
-        return { ok: false, reason: 'result_too_long' };
-    }
-
-    return {
-        ok: true,
-        translatedWords,
-        semanticDescription
-    };
+    if (totalLength > MAX_GEMINI_TOTAL_RESULT_LENGTH) return { ok: false, reason: 'result_too_long' };
+    return { ok: true, translatedWords, semanticDescription };
 }
 
-function withGeminiTimeout(promise, timeoutMs) {
-    return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('gemini_timeout')), timeoutMs);
-        Promise.resolve(promise).then(
-            (value) => {
-                clearTimeout(timer);
-                resolve(value);
-            },
-            (error) => {
-                clearTimeout(timer);
-                reject(error);
-            }
-        );
-    });
+async function safeStateCall(store, method, ...args) {
+    if (!store || typeof store[method] !== 'function') return undefined;
+    try { return await store[method](...args); } catch (_) { return undefined; }
 }
 
 async function resolveGeminiSemantics({ input, words, unknownWords, localProgrammingText, config = {}, utils = {} }) {
     const requestContext = createGeminiRequestContext({ input, words, unknownWords, config });
-    if (!requestContext.shouldRequest) {
-        return { status: 'skipped', reason: requestContext.reason };
-    }
+    if (!requestContext.shouldRequest) return { status: 'skipped', reason: requestContext.reason };
 
-    const apiKey = String(config.apiKey || '').trim();
-    if (!apiKey) return { status: 'skipped', reason: 'missing_key' };
-
-    const model = normalizeGeminiModel(config.model);
+    const model = resolveGeminiModel(config);
     if (!model) return { status: 'failed', reason: 'invalid_model' };
-
-    const fetch = utils.tauriFetch;
-    if (typeof fetch !== 'function') return { status: 'failed', reason: 'network_unavailable' };
+    const parsedPool = parseGeminiKeyPool(config);
+    if (!parsedPool.entries.some((entry) => entry.enabled)) return { status: 'skipped', reason: 'missing_key' };
+    if (typeof utils.tauriFetch !== 'function') return { status: 'failed', reason: 'network_unavailable' };
 
     const requestPayload = {
         ...requestContext.payload,
@@ -246,50 +178,52 @@ async function resolveGeminiSemantics({ input, words, unknownWords, localProgram
             : undefined
     };
     if (requestPayload.localMeaning === undefined) delete requestPayload.localMeaning;
-    const requestBody = createGeminiRequestBody(requestPayload);
-    const Body = utils.http && utils.http.Body;
-    const body = Body && typeof Body.json === 'function'
-        ? Body.json(requestBody)
-        : { type: 'Json', payload: requestBody };
-    const configuredTimeout = Number(config.geminiTimeoutMs);
-    const timeoutMs = Number.isFinite(configuredTimeout)
-        ? Math.max(1, Math.min(configuredTimeout, 30000))
-        : DEFAULT_GEMINI_TIMEOUT_MS;
 
+    const now = typeof utils.geminiNow === 'function' ? utils.geminiNow : Date.now;
+    const startedAt = now();
+    const deadlineAt = startedAt + GEMINI_GLOBAL_DEADLINE_MS;
+    let store = await createSqliteGeminiStateStore(utils);
+    let snapshot = { activeFingerprint: '', states: new Map() };
     try {
-        const response = await withGeminiTimeout(
-            fetch(`${GEMINI_API_BASE}/${encodeURIComponent(model)}:generateContent`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-goog-api-key': apiKey
-                },
-                body,
-                responseType: 1,
-                timeout: Math.max(1, Math.ceil(timeoutMs / 1000))
-            }),
-            timeoutMs
-        );
-        if (!response || response.ok !== true) {
-            const status = response && Number.isFinite(Number(response.status))
-                ? Number(response.status)
-                : 0;
-            return { status: 'failed', reason: status ? `http_${status}` : 'http_error' };
+        if (store) {
+            await safeStateCall(store, 'initialize', parsedPool.entries.map((entry) => entry.fingerprint), startedAt);
+            snapshot = await safeStateCall(store, 'snapshot') || snapshot;
         }
-
-        const responseText = extractGeminiText(response.data);
-        const validated = validateGeminiResponseText(responseText, requestContext.requestedTokens);
-        if (!validated.ok) return { status: 'failed', reason: validated.reason };
-        return {
-            status: 'success',
-            translatedWords: validated.translatedWords,
-            semanticDescription: validated.semanticDescription
-        };
-    } catch (error) {
-        return {
-            status: 'failed',
-            reason: error && error.message === 'gemini_timeout' ? 'timeout' : 'network_error'
-        };
+        const plan = createGeminiAttemptPlan(parsedPool.entries, snapshot, startedAt, config.maxKeyAttempts);
+        if (!plan.length) return { status: 'skipped', reason: 'no_available_key' };
+        const requestUtils = { ...utils, geminiTimeoutMs: config.geminiTimeoutMs };
+        for (const entry of plan) {
+            if (now() >= deadlineAt) return { status: 'failed', reason: 'global_deadline' };
+            const outcome = await executeGeminiInteraction({
+                keyEntry: entry,
+                model,
+                payload: requestPayload,
+                utils: requestUtils,
+                deadlineAt,
+                now
+            });
+            if (outcome.outcome === 'success') {
+                const validated = validateGeminiResponseText(outcome.text, requestContext.requestedTokens);
+                if (!validated.ok) return { status: 'failed', reason: validated.reason };
+                await safeStateCall(store, 'markSuccess', entry.fingerprint, now());
+                return {
+                    status: 'success',
+                    translatedWords: validated.translatedWords,
+                    semanticDescription: validated.semanticDescription
+                };
+            }
+            if (outcome.invalid) await safeStateCall(store, 'markInvalid', entry.fingerprint, now());
+            if (outcome.rateLimited) {
+                const state = snapshot.states.get(entry.fingerprint) || {};
+                const count = Number(state.rate_limit_count || 0) + 1;
+                await safeStateCall(store, 'markCooldown', entry.fingerprint, now() + cooldownSeconds(count, outcome.response) * 1000, count, now());
+            }
+            if (outcome.outcome === 'stop') return { status: 'failed', reason: outcome.reason };
+        }
+        return { status: 'failed', reason: 'key_attempts_exhausted' };
+    } finally {
+        await safeStateCall(store, 'close');
+        store = null;
     }
 }
 
@@ -297,9 +231,7 @@ function appendGeminiSection(localText, result) {
     if (!result || result.status !== 'success') return localText;
     const lines = [String(localText), '', `AI 语义增强：${result.semanticDescription}`];
     const entries = Object.entries(result.translatedWords || {});
-    if (entries.length > 0) {
-        lines.push(`AI 未知词：${entries.map(([token, value]) => `${token}：${value}`).join('；')}`);
-    }
+    if (entries.length > 0) lines.push(`AI 未知词：${entries.map(([token, value]) => `${token}：${value}`).join('；')}`);
     return lines.join('\n');
 }
 
@@ -308,11 +240,8 @@ async function translate(text, _from, _to, options = {}) {
     if (model.outputStyle !== 'report' && model.outputStyle !== 'chinese') {
         return formatByStyle(model.words, model.outputStyle, model.acronymStyle);
     }
-
     const sections = await buildDictionarySections(model, options);
-    const localText = model.outputStyle === 'chinese'
-        ? renderChineseOnly(model, sections)
-        : createReport(model, sections);
+    const localText = model.outputStyle === 'chinese' ? renderChineseOnly(model, sections) : createReport(model, sections);
     const geminiResult = await resolveGeminiSemantics({
         input: model.input,
         words: model.words,
@@ -327,16 +256,15 @@ async function translate(text, _from, _to, options = {}) {
 if (typeof module !== 'undefined' && module.exports) {
     Object.assign(module.exports, {
         DEFAULT_GEMINI_MODEL,
+        GEMINI_MODEL_PRESETS,
         appendGeminiSection,
-        createGeminiRequestBody,
         createGeminiRequestContext,
-        extractGeminiText,
         minimalAdjacentTokens,
         normalizeGeminiModel,
+        resolveGeminiModel,
         resolveGeminiSemantics,
         semanticUnknownWords,
         translate,
-        validateGeminiResponseText,
-        withGeminiTimeout
+        validateGeminiResponseText
     });
 }

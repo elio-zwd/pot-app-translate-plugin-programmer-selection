@@ -89,53 +89,82 @@ helloWorld
 
 ## 第二层：Gemini 语义增强
 
-Gemini 只负责未知词的中文语义与标识符上下文解释，不参与标识符拆分、缩写边界或命名格式生成。
+Gemini 只负责未知词的中文语义与标识符上下文解释，不参与标识符拆分、缩写边界或命名格式生成。任何 Gemini 失败都不会删改第一层结果。
 
 ### Gemini 语义增强模式
 
-- `off`：默认值，零网络请求；
-- `unknown_only`：仅当本地层仍有未知 token 时请求一次；
-- `always`：完整分析或仅中文含义时始终请求一次。
+- `off`：默认值，零网络请求、零 Gemini 状态库写入；
+- `unknown_only`：仅当本地层仍有未知 token 时请求；
+- `always`：完整分析或仅中文含义时始终请求。
 
 ### Gemini 发送范围
 
-- `unknown_tokens`：默认值。`unknown_only` 只发送未知 token 和其前后最多一个相邻 token，不发送完整标识符；
+- `unknown_tokens`：默认值。仅发送未知 token 和最少必要相邻 token，不发送完整标识符；
 - `identifier`：用户明确选择后，才在请求中增加完整标识符。
 
-无论选择哪种模式，插件都不会发送：
+无论选择哪种模式，插件都不会发送完整源码行、文件路径、项目名称、未选中的剪贴板内容或本地数据库内容。
 
-- 完整源码行；
-- 文件路径；
-- 项目名称；
-- 剪贴板中未被用户选中的内容；
-- 本地数据库内容；
-- API Key 以外的账户信息。
+### Gemini Key 池
+
+`apiKeyPool` 最多接受 20 个唯一合法 Key，支持换行、英文逗号、中文逗号和分号分隔。可以为 Key 添加仅用于本地辨认的名称，也可以用 `#` 前缀禁用：
+
+```text
+主要=<KEY_1>
+备用=<KEY_2>
+#停用=<KEY_3>
+```
+
+同一 Key 重复出现时保留第一次出现的位置、名称和启用状态。名称不会发送给 Google。
+
+调度策略固定为 `failover_only`：
+
+- 成功后继续使用当前 Key，不在成功请求间轮询；
+- 只有请求失败并且错误类型允许切换时，才尝试下一个 Key；
+- 单次逻辑请求默认最多尝试 5 个不同 Key，可配置为 1、3、5、10 或 20；
+- `401/403` 将当前 Key 标记为无效；
+- `429` 按 `Retry-After` 或本地阶梯策略进入冷却；
+- `408`、网络异常和超时会在当前 Key 额外重试 1 次；
+- `5xx` 会在当前 Key 额外重试最多 2 次；
+- `400`、`404` 或结构化响应非法时停止当前 Gemini 请求，不切换模型。
+
+运行时调度状态保存在插件目录内的 `gemini_state.db`，其中只包含 SHA-256 指纹、状态、冷却时间和计数，不保存完整 Key、Key 尾号、用户输入或模型输出。该文件安装后按需创建，不进入 Git 或 Artifact；状态数据库不可用时会降级为从第一个启用 Key 开始的无持久化模式。
 
 ### API 与模型
 
-本分支依据 2026 年 7 月的 Google 官方 Gemini API 文档实现：
+默认模型为 `gemini-3.5-flash-lite`。设置页提供以下稳定模型预设：
 
-- 默认稳定模型：`gemini-3.6-flash`；
-- REST 接口：`v1beta/models/{model}:generateContent`；
-- API Key 通过 `x-goog-api-key` 请求头传递，不拼接到 URL；
-- 使用 `systemInstruction` 限制任务边界；
-- 请求 `responseMimeType: application/json`；
-- 模型响应仍由本地代码执行字段白名单、token 白名单、长度和 JSON 校验。
+- `gemini-3.5-flash-lite`（默认）；
+- `gemini-3.6-flash`；
+- `gemini-3.5-flash`；
+- `gemini-3.1-flash-lite`；
+- 自定义模型 ID。
 
-模型输入框留空时使用上述稳定模型；也可以填写 Google 当前支持的其他模型 ID。模型名只能包含字母、数字、点、下划线和连字符。
+自定义模型只允许字母、数字、点、下划线和连字符，长度最多 80；不接受 URL、路径、查询参数或 `models/` 前缀。插件不使用浮动 `latest` 预设，也不实现备用模型自动切换。
+
+Gemini 请求使用 Interactions API：
+
+```text
+POST https://generativelanguage.googleapis.com/v1beta/interactions
+```
+
+- API Key 只通过 `x-goog-api-key` 请求头传递，不拼接到 URL；
+- 请求显式设置 `store: false`、`stream: false`、`background: false`；
+- 使用顶层 `response_format` 请求 JSON 结构化文本；
+- 不使用 `previous_interaction_id`、工具调用、后台任务或流式输出；
+- 模型响应仍由本地代码执行字段白名单、token 白名单、类型、数量和长度校验。
 
 Google 官方依据：
 
-- `https://ai.google.dev/gemini-api/docs/models/gemini-3.6-flash`
-- `https://ai.google.dev/api/generate-content`
-- `https://ai.google.dev/api`
-- `https://ai.google.dev/gemini-api/docs/troubleshooting`
-- `https://ai.google.dev/gemini-api/docs/rate-limits`
-- `https://ai.google.dev/gemini-api/docs/safety-settings`
+- `https://ai.google.dev/gemini-api/docs/interactions-overview`
+- `https://ai.google.dev/api/interactions-api-v1`
+- `https://ai.google.dev/gemini-api/docs/structured-output`
+- `https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite`
+- `https://ai.google.dev/gemini-api/docs/latest-model`
+- `https://ai.google.dev/gemini-api/docs/changelog`
 
 ### API Key 明文限制
 
-**Gemini API Key 在 Pot 插件设置页面可能以明文显示。**
+**Gemini API Key 池在 Pot 插件设置页面可能以明文显示。**
 
 当前 Pot 通用外部插件配置页没有专用密码输入类型，本项目不会修改 Pot 主程序。请只使用用户自行创建的 Gemini API Key，并避免在录屏、截图或远程协助时暴露设置页面。
 
@@ -143,21 +172,19 @@ Google 官方依据：
 
 - 提交或内置真实 API Key；
 - 在日志、异常、插件输出或 URL 中显示 Key；
-- 将 Key 写入 `.env`、测试快照、数据库或 Artifact；
+- 将完整 Key 写入 `.env`、测试快照、状态数据库或 Artifact；
 - 输出完整请求头或包含 Key 的配置对象。
 
 ### 回退策略
 
-以下情况全部静默回退到完整本地结果：
+以下情况全部静默回退到逐字不变的完整本地结果：
 
-- 未填写 API Key；
-- HTTP 400、401、403、429 或 5xx；
-- 网络异常或超时；
-- 空响应、非 JSON 响应；
-- Markdown 代码围栏；
-- 返回未请求的 token；
-- 返回额外字段、字段类型错误或内容超长；
-- Pot 当前环境不提供网络函数。
+- 未填写可用 Key、全部 Key 被禁用或达到尝试上限；
+- 模型配置非法；
+- HTTP、网络、超时或全局截止时间失败；
+- Interaction 未完成、缺少 `model_output`、响应为空或非 JSON；
+- Markdown 代码围栏、额外字段、未知 token 键、字段类型错误或内容超长；
+- Pot 当前环境不提供网络或状态数据库能力。
 
 Gemini 成功时，完整分析末尾增加：
 
@@ -166,7 +193,7 @@ AI 语义增强：……
 AI 未知词：customToken：……
 ```
 
-Gemini 失败时，不附加错误信息，也不删减本地的原文、识别类型、拆分、编程含义、普通词义、未知词和命名格式转换。
+Gemini 失败时，不附加远端错误信息，也不删减本地的原文、识别类型、拆分、编程含义、普通词义、未知词和命名格式转换。
 
 ## 安装
 
@@ -203,7 +230,7 @@ npm test
 python scripts/test_dictionary_build.py
 ```
 
-`npm test` 会先把 `src/runtime-*.js` 合成为 Pot 要求的单文件 `main.js`，再运行第一层与 Gemini 的 JavaScript 单元测试和 Pot `eval()` 加载契约测试。Gemini 测试全部使用 mock 网络，不请求真实 Gemini API。
+`npm test` 会先把 `src/runtime-*.js` 合成为 Pot 要求的单文件 `main.js`，再运行第一层、Key 池、Interactions API 和 Pot `eval()` 加载契约测试。Gemini 测试全部使用 mock 网络，不请求真实 Gemini API，也不依赖真实 SQLite。
 
 构建完整离线词典：
 
@@ -230,10 +257,13 @@ dictionary.meta.json
 THIRD_PARTY_NOTICES.md
 ```
 
+`gemini_state.db`、源码、测试、脚本、`.env`、请求日志和开发缓存不会打包。
+
 ## 已知限制
 
 - 标识符中文组合采用本地规则，不等同于完整句子机器翻译；
 - 一个英文词可能有多种含义，普通模式展示 ECDICT 的前两行释义；
 - 自动类型判断是启发式规则，特殊函数可手动选择类型；
 - Gemini 语义解释具有不确定性，因此不会参与命名格式生成；
+- Key 在 Pot 设置页面可能明文显示；
 - 第一层处理单个标识符、短词组或单词，不重构完整源代码。
