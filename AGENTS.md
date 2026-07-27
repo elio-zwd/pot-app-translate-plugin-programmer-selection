@@ -68,7 +68,8 @@
 - 功能代码不得直接提交到 `main`。
 - 第一层本地词典分支：`feat/migrate-local-dictionary`，PR Base 为 `main`。
 - Gemini 第二层分支：`feat/gemini-semantic-layer`，必须从通过验收的 `feat/migrate-local-dictionary` 创建，PR Base 为 `feat/migrate-local-dictionary`。
-- 两个 PR 均先创建为 Draft PR。
+- Gemini Key 池与 Interactions API 分支：`feat/gemini-key-pool-and-model-routing`，必须从固定的 PR-B Head `4508d3b8f9490c3d02cf4f14b14662f7955127c2` 创建，PR Base 为 `feat/gemini-semantic-layer`。
+- 各 PR 均先创建为 Draft PR。
 - 未经用户明确指示不得合并、关闭或转换为 Ready for review。
 - 不得修改、关闭或合并旧仓库迁移来源 PR。
 - 每次远端写入后记录最新 Head SHA。
@@ -105,6 +106,8 @@ Gemini 只能作为可关闭的语义增强层：
 - 不发送源码行、文件路径、项目名称、未选中的剪贴板内容；
 - 标识符拆分、缩写边界和命名格式生成始终由本地代码负责；
 - Gemini 失败、超时、限流、鉴权失败、空响应或非法响应时，必须完整回退本地结果；
+- PR-C 使用 Gemini Interactions API，必须显式 `store: false`，不得保留 `generateContent` 主请求路径；
+- PR-C 默认模型为 `gemini-3.5-flash-lite`，不实现备用模型自动切换；
 - 所有自动化测试必须 mock 网络，不调用真实 Gemini API。
 
 开始 Gemini 实现前，必须通过网页搜索核对 Google 官方 Gemini API 文档，只以官方文档确定模型、接口版本、请求结构、API Key 传递、JSON 响应、安全和配额规则。
@@ -115,11 +118,14 @@ Gemini 只能作为可关闭的语义增强层：
 
 - 提交、打印、返回或打包真实 API Key；
 - 在 URL、日志、异常、快照、README、`.env` 或 Artifact 中泄漏 Key；
-- 输出完整请求头或包含 Key 的配置对象。
+- 输出完整请求头或包含 Key 的配置对象；
+- 在运行期调度状态库中保存完整 Key 或 Key 尾号。
 
 测试只能使用：`test-gemini-key-not-real`，并验证该字符串不会进入插件输出、错误信息、日志、快照或 Artifact。
 
 README 必须明确说明：Pot 插件设置页可能以明文显示 Gemini API Key。
+
+PR-C 的 `gemini_state.db` 只能在安装后运行期创建，只能保存 Key 指纹与调度状态，不得提交或打包。
 
 ## 8. 测试与 CI 门禁
 
@@ -158,6 +164,7 @@ CI 未全部通过时不得宣称完成。不得通过跳过测试、弱化断�
 - API Key
 - 请求日志
 - 开发缓存
+- `gemini_state.db`
 - `lingva.svg`
 
 生成 Artifact 后必须检查文件名、大小、根目录层级、文件清单、词典元数据和敏感信息泄漏。
