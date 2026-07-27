@@ -14,6 +14,12 @@ https://github.com/elio-zwd/pot-app-translate-plugin-programmer-selection
 feat/gemini-key-pool-and-model-routing
 ```
 
+PR-C：
+
+```text
+https://github.com/elio-zwd/pot-app-translate-plugin-programmer-selection/pull/3
+```
+
 PR Base：
 
 ```text
@@ -32,7 +38,7 @@ feat/gemini-semantic-layer
 https://github.com/elio-zwd/pot-app-translate-plugin-programmer-selection/pull/2
 ```
 
-PR #2 目前为 Draft、未合并。PR-C 必须继续保持独立 Draft PR，禁止合并任何 PR。
+PR #2 和 PR #3 均为 Draft、未合并。PR-C 必须继续保持 Draft，禁止合并任何 PR。
 
 ## 2. 新对话执行顺序
 
@@ -162,7 +168,7 @@ tests/gemini-interactions.test.cjs
 - 只修改 `feat/gemini-key-pool-and-model-routing`；
 - Git Commit 使用 `英文 Tag: 中文描述`；
 - PR Base 必须为 `feat/gemini-semantic-layer`；
-- PR 保持 Draft；
+- PR #3 保持 Draft；
 - 未经用户明确指示不得合并、关闭或转 Ready；
 - 每次提交后记录 Head SHA；
 - CI 失败必须修复真实问题，禁止删测试或弱化安全门禁。
@@ -174,12 +180,10 @@ feat: 添加 Gemini Key 池解析与无秘密状态存储
 feat: 实现粘滞 Key 调度与错误冷却策略
 refactor: 迁移 Gemini 请求到 Interactions API
 feat: 添加稳定模型选择与旧配置兼容
- test: 补充 Key 池调度与 Interactions API 测试
+test: 补充 Key 池调度与 Interactions API 测试
 ci: 更新 Interactions API 与密钥泄漏门禁
 docs: 更新 Key 池模型配置与隐私说明
 ```
-
-实际提交中修正 `test:` 前多余空格。
 
 ## 9. 完成前验证
 
@@ -191,7 +195,7 @@ python scripts/test_dictionary_build.py
 python scripts/build_runtime.py
 ```
 
-并由 GitHub Actions完成完整词典构建、eval 契约、泄漏扫描和 `.potext` 打包。
+并由 GitHub Actions 完成完整词典构建、eval 契约、泄漏扫描和 `.potext` 打包。
 
 必须下载 Artifact 检查：
 
