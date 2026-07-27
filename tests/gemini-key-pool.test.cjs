@@ -83,9 +83,10 @@ test('冷却过期自动恢复，配置变化清理陈旧状态', async () => {
     assert.equal(snapshot.states.get('keep').status, 'available');
 });
 
-test('尝试上限只接受 1 到 20，默认值为 5', () => {
+test('尝试上限兼容选择值与旧数字配置，默认值为 5', () => {
     assert.equal(plugin.normalizeMaxKeyAttempts(undefined), 5);
     assert.equal(plugin.normalizeMaxKeyAttempts('3'), 3);
+    assert.equal(plugin.normalizeMaxKeyAttempts('v3'), 3);
     assert.equal(plugin.normalizeMaxKeyAttempts(20), 20);
     assert.equal(plugin.normalizeMaxKeyAttempts(0), 5);
     assert.equal(plugin.normalizeMaxKeyAttempts(21), 5);
