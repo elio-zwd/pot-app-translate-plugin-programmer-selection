@@ -61,6 +61,7 @@ def build_dictionary(input_csv: Path, output_db: Path) -> dict[str, int]:
     base_count = 0
     alias_count = 0
     skipped_count = 0
+    alias_relations: list[tuple[str, str]] = []
 
     with input_csv.open("r", encoding="utf-8-sig", newline="") as source:
         reader = csv.DictReader(source)
@@ -97,6 +98,7 @@ def build_dictionary(input_csv: Path, output_db: Path) -> dict[str, int]:
             for alias in exchange_aliases(row.get("exchange") or ""):
                 if alias == word:
                     continue
+                alias_relations.append((alias, word))
                 cursor = connection.execute(
                     """
                     INSERT OR IGNORE INTO dictionary(word, lemma, phonetic, translation, pos, is_alias)
@@ -106,6 +108,21 @@ def build_dictionary(input_csv: Path, output_db: Path) -> dict[str, int]:
                 )
                 alias_count += max(cursor.rowcount, 0)
 
+    # ECDICT 可能同时包含 service 和 services 等显式词条。显式词条应保留自己的
+    # 音标/释义，但 lemma 仍应指向 exchange 给出的原形。统一在所有词条写入后应用
+    # 词形关系，避免 CSV 排序或显式词条覆盖先前别名导致原形丢失。
+    lemma_links_applied = 0
+    for alias, lemma in alias_relations:
+        cursor = connection.execute(
+            """
+            UPDATE dictionary
+            SET lemma = ?
+            WHERE word = ? AND word <> ? AND lemma = word
+            """,
+            (lemma, alias, lemma),
+        )
+        lemma_links_applied += max(cursor.rowcount, 0)
+
     connection.commit()
     connection.execute("VACUUM")
     entry_count = connection.execute("SELECT COUNT(*) FROM dictionary").fetchone()[0]
@@ -113,6 +130,7 @@ def build_dictionary(input_csv: Path, output_db: Path) -> dict[str, int]:
     return {
         "base_rows_processed": base_count,
         "aliases_inserted": alias_count,
+        "lemma_links_applied": lemma_links_applied,
         "entries": entry_count,
         "rows_skipped": skipped_count,
     }
