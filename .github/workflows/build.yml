@@ -1,34 +1,160 @@
-name: Build
-on: push
-permissions: write-all
+name: Programmer Selection Translator
+
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ECDICT_COMMIT: bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b
+  PLUGIN_ID: plugin.com.elio.programmer-selection-translator
 
 jobs:
-  build:
+  test-and-package:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          fetch-depth: 1
-      - name: Install zip
-        run: sudo apt-get install -y jq
-      - id: getname
+          node-version: '24'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate plugin identity and source layout
         run: |
-          echo "NAME=$(cat info.json | jq '.id' | tr -d '"')" >> "$GITHUB_ENV"
-          echo "ICON=$(cat info.json | jq '.icon' | tr -d '"')" >> "$GITHUB_ENV"
-      - uses: vimtor/action-zip@v1
-        with:
-          files: info.json ${{ env.ICON }} main.js
-          dest: ${{ env.NAME }}.potext
-      - name: Upload Artifacts
+          set -euo pipefail
+          node <<'NODE'
+          const info = require('./info.json');
+          const expectedKeys = ['outputStyle', 'dictionaryMode', 'identifierType', 'acronymStyle'];
+          if (info.id !== 'plugin.com.elio.programmer-selection-translator') throw new Error('unexpected plugin id');
+          if (info.plugin_type !== 'translate') throw new Error('unexpected plugin type');
+          if (info.icon !== 'icon.svg') throw new Error('unexpected icon');
+          if (info.display !== '程序员划词翻译') throw new Error('unexpected display');
+          if (info.homepage !== 'https://github.com/elio-zwd/pot-app-translate-plugin-programmer-selection') throw new Error('unexpected homepage');
+          const keys = (info.needs || []).map((item) => item.key);
+          for (const key of expectedKeys) if (!keys.includes(key)) throw new Error(`missing config: ${key}`);
+          if (keys.includes('requestPath')) throw new Error('Lingva requestPath remains');
+          NODE
+          test -f src/runtime-01.js
+          test -f scripts/build_runtime.py
+          test -f scripts/build_dictionary.py
+          test -f tests/main.test.cjs
+          test -f icon.svg
+          test -f THIRD_PARTY_NOTICES.md
+          test ! -f lingva.svg
+          test ! -f dictionary.db
+          ! grep -R -n -i --exclude-dir=.git --exclude='AGENTS.md' --exclude='GEMINI-HANDOFF.md' \
+            -E 'plugin\.com\.pot-app\.lingva|lingva\.pot-app\.com|requestPath' .
+
+      - name: Run JavaScript unit tests
+        run: npm test
+
+      - name: Test dictionary builder
+        run: python scripts/test_dictionary_build.py
+
+      - name: Download pinned ECDICT source
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 3 --retry-delay 2 \
+            -o /tmp/ecdict.csv \
+            "https://raw.githubusercontent.com/skywind3000/ECDICT/${ECDICT_COMMIT}/ecdict.csv"
+          head -n 1 /tmp/ecdict.csv | grep -q '^word,phonetic,definition,translation,'
+
+      - name: Build offline dictionary
+        run: |
+          set -euo pipefail
+          python scripts/build_dictionary.py \
+            --input /tmp/ecdict.csv \
+            --output dictionary.db \
+            --meta dictionary.meta.json \
+            --source-commit "${ECDICT_COMMIT}"
+
+      - name: Validate dictionary, license and generated runtime
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import sqlite3
+          from pathlib import Path
+
+          root = Path('.')
+          meta = json.loads((root / 'dictionary.meta.json').read_text(encoding='utf-8'))
+          assert meta['source_file'] == 'ecdict.csv'
+          assert meta['source_commit'] == 'bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b'
+          assert meta['source_license'] == 'MIT'
+
+          connection = sqlite3.connect(root / 'dictionary.db')
+          entry_count = connection.execute('SELECT COUNT(*) FROM dictionary').fetchone()[0]
+          translated_count = connection.execute(
+              "SELECT COUNT(*) FROM dictionary WHERE TRIM(translation) <> ''"
+          ).fetchone()[0]
+          alias_count = connection.execute(
+              'SELECT COUNT(*) FROM dictionary WHERE is_alias = 1'
+          ).fetchone()[0]
+          samples = dict(connection.execute(
+              "SELECT word, lemma FROM dictionary WHERE word IN ('apple', 'services', 'retries')"
+          ).fetchall())
+          connection.close()
+
+          print({'entries': entry_count, 'translated_entries': translated_count, 'aliases': alias_count, 'samples': samples})
+          assert entry_count == meta['entries'], (entry_count, meta)
+          assert entry_count > 100000, meta
+          assert translated_count == entry_count
+          assert alias_count > 10000
+          assert samples['services'] == 'service'
+          assert samples['retries'] == 'retry'
+          PY
+          grep -q "${ECDICT_COMMIT}" THIRD_PARTY_NOTICES.md
+          test -s main.js
+          grep -q 'plugin.com.elio.programmer-selection-translator' main.js
+          ! grep -i -E 'lingva|requestPath|plugin\.com\.elio\.code-identifier' main.js
+
+      - name: Scan for API key leakage
+        run: |
+          set -euo pipefail
+          ! grep -R -n -E 'AIza[0-9A-Za-z_-]{20,}' \
+            --exclude-dir=.git --exclude='*.potext' --exclude='dictionary.db' .
+          test ! -f .env
+          test ! -f .env.local
+
+      - name: Package Pot plugin
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          zip -j "dist/${PLUGIN_ID}.potext" \
+            main.js info.json icon.svg dictionary.db dictionary.meta.json THIRD_PARTY_NOTICES.md
+          actual="$(unzip -Z1 "dist/${PLUGIN_ID}.potext" | sort)"
+          expected="$(printf '%s\n' THIRD_PARTY_NOTICES.md dictionary.db dictionary.meta.json icon.svg info.json main.js | sort)"
+          test "$actual" = "$expected"
+          rm -rf /tmp/potext-check
+          mkdir -p /tmp/potext-check
+          unzip -q "dist/${PLUGIN_ID}.potext" -d /tmp/potext-check
+          test ! -e /tmp/potext-check/src
+          test ! -e /tmp/potext-check/tests
+          test ! -e /tmp/potext-check/scripts
+          test ! -e /tmp/potext-check/.env
+          test ! -e /tmp/potext-check/lingva.svg
+          ! grep -R -n -E 'AIza[0-9A-Za-z_-]{20,}|test-gemini-key-not-real' /tmp/potext-check
+          unzip -l "dist/${PLUGIN_ID}.potext"
+          ls -lh "dist/${PLUGIN_ID}.potext"
+
+      - name: Upload plugin artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.NAME }}.potext
-          path: "*.potext"
+          name: plugin.com.elio.programmer-selection-translator.potext
+          path: dist/plugin.com.elio.programmer-selection-translator.potext
           if-no-files-found: error
-      - name: Upload Release
-        if: startsWith(github.ref, 'refs/tags')
-        uses: softprops/action-gh-release@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          files: "*.potext"
+          retention-days: 14
