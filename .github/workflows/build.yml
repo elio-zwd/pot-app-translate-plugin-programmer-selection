@@ -40,7 +40,7 @@ jobs:
           const info = require('./info.json');
           const expectedKeys = [
             'outputStyle', 'dictionaryMode', 'identifierType', 'acronymStyle',
-            'aiMode', 'apiKey', 'model', 'sendScope'
+            'aiMode', 'apiKeyPool', 'maxKeyAttempts', 'modelPreset', 'customModel', 'sendScope'
           ];
           if (info.id !== 'plugin.com.elio.programmer-selection-translator') throw new Error('unexpected plugin id');
           if (info.plugin_type !== 'translate') throw new Error('unexpected plugin type');
@@ -49,10 +49,12 @@ jobs:
           if (info.homepage !== 'https://github.com/elio-zwd/pot-app-translate-plugin-programmer-selection') throw new Error('unexpected homepage');
           const needs = info.needs || [];
           const keys = needs.map((item) => item.key);
-          if (keys.length !== expectedKeys.length || expectedKeys.some((key) => !keys.includes(key))) {
-            throw new Error(`unexpected config keys: ${keys.join(',')}`);
+          if (JSON.stringify(keys) !== JSON.stringify(expectedKeys)) {
+            throw new Error(`unexpected config keys/order: ${keys.join(',')}`);
           }
-          if (keys.includes('requestPath')) throw new Error('Lingva requestPath remains');
+          if (keys.includes('apiKey') || keys.includes('model') || keys.includes('requestPath')) {
+            throw new Error('legacy visible config remains');
+          }
           const byKey = Object.fromEntries(needs.map((item) => [item.key, item]));
           if (byKey.aiMode.type !== 'select' || Object.keys(byKey.aiMode.options)[0] !== 'off') {
             throw new Error('aiMode must default to off');
@@ -60,21 +62,38 @@ jobs:
           if (byKey.sendScope.type !== 'select' || Object.keys(byKey.sendScope.options)[0] !== 'unknown_tokens') {
             throw new Error('sendScope must default to unknown_tokens');
           }
-          if (byKey.apiKey.type !== 'input' || byKey.apiKey.display !== 'Gemini API Key（设置页明文）') {
-            throw new Error('apiKey plaintext warning is missing');
+          if (byKey.apiKeyPool.type !== 'input' || !byKey.apiKeyPool.display.includes('明文')) {
+            throw new Error('apiKeyPool plaintext warning is missing');
           }
-          if (byKey.model.type !== 'input') throw new Error('model input is missing');
+          const maxAttempts = Object.keys(byKey.maxKeyAttempts.options || {});
+          if (JSON.stringify(maxAttempts) !== JSON.stringify(['5', '1', '3', '10', '20'])) {
+            throw new Error(`unexpected maxKeyAttempts order: ${maxAttempts.join(',')}`);
+          }
+          const models = Object.keys(byKey.modelPreset.options || {});
+          const expectedModels = [
+            'gemini-3.5-flash-lite', 'gemini-3.6-flash',
+            'gemini-3.5-flash', 'gemini-3.1-flash-lite', 'custom'
+          ];
+          if (JSON.stringify(models) !== JSON.stringify(expectedModels)) {
+            throw new Error(`unexpected model order: ${models.join(',')}`);
+          }
+          if (byKey.customModel.type !== 'input') throw new Error('customModel input is missing');
           NODE
           test -f src/runtime-01.js
           test -f src/runtime-02-gemini.js
+          test -f src/runtime-03-gemini-key-pool.js
+          test -f src/runtime-04-gemini-interactions.js
           test -f scripts/build_runtime.py
           test -f scripts/build_dictionary.py
           test -f tests/main.test.cjs
           test -f tests/gemini.test.cjs
+          test -f tests/gemini-key-pool.test.cjs
+          test -f tests/gemini-interactions.test.cjs
           test -f icon.svg
           test -f THIRD_PARTY_NOTICES.md
           test ! -f lingva.svg
           test ! -f dictionary.db
+          test ! -f gemini_state.db
           ! grep -R -n -i \
             -E 'plugin\.com\.pot-app\.lingva|lingva\.pot-app\.com|requestPath' \
             src info.json README.md package.json icon.svg THIRD_PARTY_NOTICES.md
@@ -161,10 +180,18 @@ jobs:
           grep -q "${ECDICT_COMMIT}" THIRD_PARTY_NOTICES.md
           test -s main.js
           grep -q 'plugin.com.elio.programmer-selection-translator' main.js
+          grep -q "const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash-lite'" main.js
+          grep -q "const MAX_GEMINI_KEYS = 20" main.js
+          grep -q "const DEFAULT_MAX_KEY_ATTEMPTS = 5" main.js
           grep -q 'gemini-3.6-flash' main.js
-          grep -q 'generativelanguage.googleapis.com/v1beta/models' main.js
-          grep -q "'x-goog-api-key': apiKey" main.js
-          grep -q "responseMimeType: 'application/json'" main.js
+          grep -q 'gemini-3.5-flash' main.js
+          grep -q 'gemini-3.1-flash-lite' main.js
+          grep -q 'generativelanguage.googleapis.com/v1beta/interactions' main.js
+          grep -q "'x-goog-api-key': keyEntry.key" main.js
+          grep -q 'response_format' main.js
+          grep -q 'store: false' main.js
+          ! grep -F ':generateContent' main.js
+          ! grep -F 'generativelanguage.googleapis.com/v1beta/models' main.js
           ! grep -F '?key=' main.js
           ! grep -i -E 'lingva|requestPath|plugin\.com\.elio\.code-identifier' main.js
           ! grep -F 'test-gemini-key-not-real' main.js
@@ -178,6 +205,7 @@ jobs:
             main.js info.json README.md GEMINI-HANDOFF.md THIRD_PARTY_NOTICES.md icon.svg
           test ! -f .env
           test ! -f .env.local
+          test ! -f gemini_state.db
 
       - name: Package Pot plugin
         run: |
@@ -195,9 +223,11 @@ jobs:
           test ! -e /tmp/potext-check/tests
           test ! -e /tmp/potext-check/scripts
           test ! -e /tmp/potext-check/.env
+          test ! -e /tmp/potext-check/gemini_state.db
           test ! -e /tmp/potext-check/lingva.svg
           ! grep -R -n -E 'AIza[0-9A-Za-z_-]{20,}|test-gemini-key-not-real' /tmp/potext-check
           ! grep -R -n -F '?key=' /tmp/potext-check --exclude=dictionary.db
+          ! grep -R -n -F ':generateContent' /tmp/potext-check --exclude=dictionary.db
           unzip -l "dist/${PLUGIN_ID}.potext"
           ls -lh "dist/${PLUGIN_ID}.potext"
 
