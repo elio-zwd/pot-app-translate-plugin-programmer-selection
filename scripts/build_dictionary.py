@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import Iterable
 
 WORD_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9'\-]*$")
-EXCHANGE_PATTERN = re.compile(r"^[a-zA-Z0-9]+:(.+)$")
+EXCHANGE_PATTERN = re.compile(r"^([a-zA-Z0-9]+):(.+)$")
+INFLECTION_TYPES = {"p", "d", "i", "3", "r", "t", "s"}
 SCHEMA_VERSION = 1
 
 
@@ -23,14 +24,29 @@ def valid_word(value: str) -> bool:
     return bool(value and WORD_PATTERN.fullmatch(value.strip()))
 
 
-def exchange_aliases(exchange: str) -> Iterable[str]:
+def exchange_items(exchange: str) -> Iterable[tuple[str, str]]:
+    """解析 ECDICT exchange；0 是当前词条原型，1 是变形类型说明。"""
     for item in (exchange or "").split("/"):
         match = EXCHANGE_PATTERN.match(item.strip())
         if not match:
             continue
-        alias = normalized_word(match.group(1))
-        if valid_word(alias):
-            yield alias
+        exchange_type = match.group(1).lower()
+        value = normalized_word(match.group(2))
+        if valid_word(value):
+            yield exchange_type, value
+
+
+def exchange_lemma(exchange: str) -> str:
+    for exchange_type, value in exchange_items(exchange):
+        if exchange_type == "0":
+            return value
+    return ""
+
+
+def exchange_aliases(exchange: str) -> Iterable[str]:
+    for exchange_type, value in exchange_items(exchange):
+        if exchange_type in INFLECTION_TYPES:
+            yield value
 
 
 def create_schema(connection: sqlite3.Connection) -> None:
@@ -61,6 +77,7 @@ def build_dictionary(input_csv: Path, output_db: Path) -> dict[str, int]:
     base_count = 0
     alias_count = 0
     skipped_count = 0
+    explicit_lemma_count = 0
     alias_relations: list[tuple[str, str]] = []
 
     with input_csv.open("r", encoding="utf-8-sig", newline="") as source:
@@ -80,6 +97,12 @@ def build_dictionary(input_csv: Path, output_db: Path) -> dict[str, int]:
             word = normalized_word(original)
             phonetic = (row.get("phonetic") or "").strip()
             pos = (row.get("pos") or "").strip()
+            exchange = row.get("exchange") or ""
+            explicit_lemma = exchange_lemma(exchange)
+            lemma = explicit_lemma if explicit_lemma and explicit_lemma != word else word
+            if lemma != word:
+                explicit_lemma_count += 1
+
             connection.execute(
                 """
                 INSERT INTO dictionary(word, lemma, phonetic, translation, pos, is_alias)
@@ -91,11 +114,16 @@ def build_dictionary(input_csv: Path, output_db: Path) -> dict[str, int]:
                     pos = excluded.pos,
                     is_alias = 0
                 """,
-                (word, word, phonetic, translation, pos),
+                (word, lemma, phonetic, translation, pos),
             )
             base_count += 1
 
-            for alias in exchange_aliases(row.get("exchange") or ""):
+            # 带 0:lemma 的词条已经明确自身原型，不能再把 1:<类型> 或其他字段
+            # 反向解释成“基础词 -> 派生词”。只有基础词的 p/d/i/3/r/t/s 项用于建别名。
+            if explicit_lemma:
+                continue
+
+            for alias in exchange_aliases(exchange):
                 if alias == word:
                     continue
                 alias_relations.append((alias, word))
@@ -108,10 +136,10 @@ def build_dictionary(input_csv: Path, output_db: Path) -> dict[str, int]:
                 )
                 alias_count += max(cursor.rowcount, 0)
 
-    # ECDICT 可能同时包含 service 和 services 等显式词条。显式词条应保留自己的
-    # 音标/释义，但 lemma 仍应指向 exchange 给出的原形。统一在所有词条写入后应用
-    # 词形关系，避免 CSV 排序或显式词条覆盖先前别名导致原形丢失。
-    lemma_links_applied = 0
+    # 显式派生词可能在 CSV 后部覆盖之前插入的别名。全部词条写入后再次应用
+    # 基础词的派生关系，但只修改 lemma 仍指向自身的词条；0:lemma 已在插入时写入，
+    # 因此具有更高优先级，基础词不会被派生词反向覆盖。
+    generated_lemma_links = 0
     for alias, lemma in alias_relations:
         cursor = connection.execute(
             """
@@ -121,7 +149,7 @@ def build_dictionary(input_csv: Path, output_db: Path) -> dict[str, int]:
             """,
             (lemma, alias, lemma),
         )
-        lemma_links_applied += max(cursor.rowcount, 0)
+        generated_lemma_links += max(cursor.rowcount, 0)
 
     connection.commit()
     connection.execute("VACUUM")
@@ -130,7 +158,9 @@ def build_dictionary(input_csv: Path, output_db: Path) -> dict[str, int]:
     return {
         "base_rows_processed": base_count,
         "aliases_inserted": alias_count,
-        "lemma_links_applied": lemma_links_applied,
+        "explicit_lemmas": explicit_lemma_count,
+        "generated_lemma_links": generated_lemma_links,
+        "lemma_links_applied": explicit_lemma_count + generated_lemma_links,
         "entries": entry_count,
         "rows_skipped": skipped_count,
     }
