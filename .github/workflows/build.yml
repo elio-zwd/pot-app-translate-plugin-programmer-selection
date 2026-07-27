@@ -96,6 +96,7 @@ jobs:
           assert meta['source_file'] == 'ecdict.csv'
           assert meta['source_commit'] == 'bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b'
           assert meta['source_license'] == 'MIT'
+          assert meta['lemma_links_applied'] > 0
 
           connection = sqlite3.connect(root / 'dictionary.db')
           entry_count = connection.execute('SELECT COUNT(*) FROM dictionary').fetchone()[0]
@@ -108,18 +109,26 @@ jobs:
           sample_rows = connection.execute(
               "SELECT word, lemma, translation FROM dictionary ORDER BY word LIMIT 5"
           ).fetchall()
+          lemma_samples = dict(connection.execute(
+              "SELECT word, lemma FROM dictionary WHERE word IN ('services', 'retries', 'apples')"
+          ).fetchall())
           connection.close()
 
           print({
               'entries': entry_count,
               'translated_entries': translated_count,
               'aliases': alias_count,
+              'lemma_links_applied': meta['lemma_links_applied'],
               'samples': sample_rows,
+              'lemma_samples': lemma_samples,
           })
           assert entry_count == meta['entries'], (entry_count, meta)
           assert entry_count > 100000, meta
           assert translated_count == entry_count
           assert sample_rows and all(row[0] and row[1] and row[2].strip() for row in sample_rows)
+          assert lemma_samples['services'] == 'service'
+          assert lemma_samples['retries'] == 'retry'
+          assert lemma_samples['apples'] == 'apple'
           PY
           grep -q "${ECDICT_COMMIT}" THIRD_PARTY_NOTICES.md
           test -s main.js
