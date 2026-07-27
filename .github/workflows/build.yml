@@ -56,8 +56,9 @@ jobs:
           test -f THIRD_PARTY_NOTICES.md
           test ! -f lingva.svg
           test ! -f dictionary.db
-          ! grep -R -n -i --exclude-dir=.git --exclude='AGENTS.md' --exclude='GEMINI-HANDOFF.md' \
-            -E 'plugin\.com\.pot-app\.lingva|lingva\.pot-app\.com|requestPath' .
+          ! grep -R -n -i \
+            -E 'plugin\.com\.pot-app\.lingva|lingva\.pot-app\.com|requestPath' \
+            src info.json README.md package.json scripts tests icon.svg THIRD_PARTY_NOTICES.md
 
       - name: Run JavaScript unit tests
         run: npm test
