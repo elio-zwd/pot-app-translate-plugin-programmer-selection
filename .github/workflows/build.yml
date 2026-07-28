@@ -40,6 +40,7 @@ jobs:
           const info = require('./info.json');
           const expectedKeys = [
             'outputStyle', 'dictionaryMode', 'identifierType', 'acronymStyle',
+            'showNamingConversions', 'showStatusMessages',
             'aiMode', 'apiKeyPool', 'maxKeyAttempts', 'modelPreset', 'customModel', 'sendScope'
           ];
           if (info.id !== 'plugin.com.elio.programmer-selection-translator') throw new Error('unexpected plugin id');
@@ -58,6 +59,12 @@ jobs:
           const byKey = Object.fromEntries(needs.map((item) => [item.key, item]));
           if (byKey.aiMode.type !== 'select' || Object.keys(byKey.aiMode.options)[0] !== 'off') {
             throw new Error('aiMode must default to off');
+          }
+          if (byKey.showNamingConversions.type !== 'select' || Object.keys(byKey.showNamingConversions.options)[0] !== 'show') {
+            throw new Error('showNamingConversions must default to show');
+          }
+          if (byKey.showStatusMessages.type !== 'select' || Object.keys(byKey.showStatusMessages.options)[0] !== 'show') {
+            throw new Error('showStatusMessages must default to show');
           }
           if (byKey.sendScope.type !== 'select' || Object.keys(byKey.sendScope.options)[0] !== 'unknown_tokens') {
             throw new Error('sendScope must default to unknown_tokens');
