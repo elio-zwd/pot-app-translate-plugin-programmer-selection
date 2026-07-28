@@ -73,8 +73,7 @@ function configShows(config, key) {
  * AI 成功时使用“AI 释义”作为顶部主释义；AI 不可用时回退“本地释义”。
  * 命名转换和状态提示可由用户独立隐藏，词义始终逐词换行展示。
  */
-function createPotNativeReport(model, sections, geminiResult) {
-    const config = model.config || {};
+function createPotNativeReport(model, sections, geminiResult, config = {}) {
     const explanations = [
         {
             trait: TYPE_LABELS[model.detectedType] || model.detectedType,
