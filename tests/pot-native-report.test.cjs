@@ -32,7 +32,7 @@ function interactionResponse(payload) {
     };
 }
 
-function createPotOptions({ aiMode = 'off', fetchImpl, databaseRows = DICTIONARY_ROWS } = {}) {
+function createPotOptions({ aiMode = 'off', fetchImpl, databaseRows = DICTIONARY_ROWS, config = {} } = {}) {
     const state = { closeCalls: 0, selectCalls: 0, networkCalls: 0 };
     let closed = false;
     const sharedDictionaryDb = {
@@ -56,12 +56,15 @@ function createPotOptions({ aiMode = 'off', fetchImpl, databaseRows = DICTIONARY
                 dictionaryMode: 'both',
                 identifierType: 'auto',
                 acronymStyle: 'standard',
+                showNamingConversions: 'show',
+                showStatusMessages: 'show',
                 aiMode,
                 apiKeyPool: aiMode === 'off' ? '' : TEST_KEY,
                 maxKeyAttempts: 'v1',
                 modelPreset: 'gemini-3.5-flash-lite',
                 customModel: '',
-                sendScope: 'unknown_tokens'
+                sendScope: 'unknown_tokens',
+                ...config
             },
             utils: {
                 Database: {
@@ -112,7 +115,7 @@ test('Pot 运行时复用词典连接池且不会主动关闭', async () => {
     assert.doesNotMatch(JSON.stringify(second), /closed pool/);
 });
 
-test('AI 关闭时词义分组展示全部本地结果和未收录项', async () => {
+test('AI 关闭时回退本地释义并逐词展示音标和未收录项', async () => {
     const { options } = createPotOptions();
     const result = await plugin.translate('gemini-real-api-pot-smoke-test', 'auto', 'zh_cn', options);
     const rows = explanationMap(result);
@@ -120,6 +123,7 @@ test('AI 关闭时词义分组展示全部本地结果和未收录项', async ()
     assert.equal(rows.get('文件名')[0], 'gemini-real-api-pot-smoke-test');
     assert.equal(rows.get('词语拆分')[0], 'gemini · real · API · pot · smoke · test');
     assert.equal(rows.get('本地释义')[0], 'Gemini 真实 API Pot 冒烟测试');
+    assert.equal(rows.has('AI 释义'), false);
     assert.deepEqual(splitNativeLines(rows.get('词义')[0]), [
         'gemini：未收录',
         "real /'ri:əl/：真实的、实际的",
@@ -128,21 +132,10 @@ test('AI 关闭时词义分组展示全部本地结果和未收录项', async ()
         'smoke /sməuk/：烟、烟雾、冒烟',
         'test /test/：测试、试验、测试'
     ]);
-    assert.deepEqual(splitNativeLines(rows.get('常用命名')[0]), [
-        '小驼峰：geminiRealApiPotSmokeTest',
-        '大驼峰：GeminiRealApiPotSmokeTest'
-    ]);
-    assert.deepEqual(splitNativeLines(rows.get('分隔命名')[0]), [
-        '下划线：gemini_real_api_pot_smoke_test',
-        '短横线：gemini-real-api-pot-smoke-test'
-    ]);
-    assert.equal(rows.get('常量命名')[0], '大写下划线：GEMINI_REAL_API_POT_SMOKE_TEST');
-    assert.equal(rows.has('AI 解释'), false);
-    assert.match((result.associations || []).join('\n'), /仍未收录：gemini, pot/);
     assert.match((result.associations || []).join('\n'), /AI 状态：已关闭，仅显示本地结果/);
 });
 
-test('AI 成功时只解释整体语义并补全本地未收录词', async () => {
+test('AI 成功时只显示 AI 释义并补全本地未收录词', async () => {
     const { options, state } = createPotOptions({
         aiMode: 'unknown_only',
         fetchImpl: async () => interactionResponse({
@@ -156,12 +149,12 @@ test('AI 成功时只解释整体语义并补全本地未收录词', async () =>
 
     const result = await plugin.translate('gemini-real-api-pot-smoke-test', 'auto', 'zh_cn', options);
     const rows = explanationMap(result);
-    const wordLines = splitNativeLines(rows.get('词义')[0]);
 
     assert.equal(state.networkCalls, 1);
-    assert.equal(rows.get('本地释义')[0], 'Gemini 真实 API Pot 冒烟测试');
-    assert.equal(rows.get('AI 解释')[0], '用于验证 Gemini 真实 API 在 Pot 插件中的基本连通性与功能可用性。');
-    assert.deepEqual(wordLines, [
+    assert.equal(rows.get('AI 释义')[0], '用于验证 Gemini 真实 API 在 Pot 插件中的基本连通性与功能可用性。');
+    assert.equal(rows.has('本地释义'), false);
+    assert.equal(rows.has('AI 解释'), false);
+    assert.deepEqual(splitNativeLines(rows.get('词义')[0]), [
         'gemini：Gemini 模型〔AI〕',
         "real /'ri:əl/：真实的、实际的",
         'API：应用程序编程接口',
@@ -169,8 +162,6 @@ test('AI 成功时只解释整体语义并补全本地未收录词', async () =>
         'smoke /sməuk/：烟、烟雾、冒烟',
         'test /test/：测试、试验、测试'
     ]);
-    assert.equal(rows.has('AI 补充'), false);
-    assert.doesNotMatch((result.associations || []).join('\n'), /仍未收录|AI 状态：已关闭/);
 });
 
 test('部分 AI 补全后只报告剩余未收录词', async () => {
@@ -189,10 +180,27 @@ test('部分 AI 补全后只报告剩余未收录词', async () => {
     assert.equal(wordLines[0], 'gemini：Gemini 模型〔AI〕');
     assert.equal(wordLines[3], 'pot：未收录');
     assert.match((result.associations || []).join('\n'), /仍未收录：pot/);
-    assert.doesNotMatch((result.associations || []).join('\n'), /仍未收录：gemini/);
 });
 
-test('设置页使用中文命名选项并明确 AI 翻译方式', () => {
+test('用户可以同时隐藏命名转换和状态提示', async () => {
+    const { options } = createPotOptions({
+        config: {
+            showNamingConversions: 'hide',
+            showStatusMessages: 'hide'
+        }
+    });
+
+    const result = await plugin.translate('gemini-real-api-pot-smoke-test', 'auto', 'zh_cn', options);
+    const rows = explanationMap(result);
+
+    assert.equal(rows.has('常用命名'), false);
+    assert.equal(rows.has('分隔命名'), false);
+    assert.equal(rows.has('常量命名'), false);
+    assert.ok(rows.has('词义'));
+    assert.equal(Object.hasOwn(result, 'associations'), false);
+});
+
+test('设置页包含中文命名、AI 翻译和附加区块显示选项', () => {
     const info = JSON.parse(fs.readFileSync(path.join(__dirname, '../info.json'), 'utf8'));
     const needs = new Map(info.needs.map((item) => [item.key, item]));
 
@@ -200,9 +208,9 @@ test('设置页使用中文命名选项并明确 AI 翻译方式', () => {
     assert.equal(needs.get('outputStyle').options.pascal, '大驼峰命名');
     assert.equal(needs.get('outputStyle').options.snake, '下划线命名');
     assert.equal(needs.get('aiMode').display, 'AI 翻译方式');
-    assert.match(needs.get('aiMode').options.off, /仅使用本地结果/);
     assert.match(needs.get('aiMode').options.unknown_only, /智能补全/);
-    assert.match(needs.get('aiMode').options.always, /与本地结果同时显示/);
+    assert.equal(needs.get('showNamingConversions').options.hide, '不显示');
+    assert.equal(needs.get('showStatusMessages').options.hide, '不显示');
 });
 
 test('无 setResult 的兼容调用继续返回可复制纯文本', async () => {
