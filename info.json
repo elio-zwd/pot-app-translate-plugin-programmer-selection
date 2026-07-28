@@ -54,6 +54,24 @@
       }
     },
     {
+      "key": "showNamingConversions",
+      "display": "显示命名转换",
+      "type": "select",
+      "options": {
+        "show": "显示（默认）",
+        "hide": "不显示"
+      }
+    },
+    {
+      "key": "showStatusMessages",
+      "display": "显示状态提示",
+      "type": "select",
+      "options": {
+        "show": "显示（默认）",
+        "hide": "不显示"
+      }
+    },
+    {
       "key": "aiMode",
       "display": "AI 翻译方式",
       "type": "select",
