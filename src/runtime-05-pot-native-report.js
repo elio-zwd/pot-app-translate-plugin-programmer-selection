@@ -169,7 +169,7 @@ async function translate(text, _from, _to, options = {}) {
     });
 
     if (model.outputStyle === 'report' && typeof options.setResult === 'function') {
-        return createPotNativeReport(model, sections, geminiResult);
+        return createPotNativeReport(model, sections, geminiResult, options.config || {});
     }
 
     const localText = model.outputStyle === 'chinese'
