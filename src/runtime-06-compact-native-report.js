@@ -1,8 +1,15 @@
+function compactNativeGloss(value) {
+    return String(value || '')
+        .replace(/(^|；)\s*[a-z]{1,5}\.\s*/gi, '$1')
+        .replace(/；{2,}/g, '；')
+        .trim();
+}
+
 function compactNativeDictionaryText(lines) {
     return (lines || [])
         .map((line) => {
             const parsed = parseNativeDictionaryLine(line);
-            return `${parsed.trait.replace(/^词义 · /, '')}：${parsed.explain}`;
+            return `${parsed.trait.replace(/^词义 · /, '')}：${compactNativeGloss(parsed.explain)}`;
         })
         .join('；');
 }
@@ -85,6 +92,7 @@ if (typeof module !== 'undefined' && module.exports) {
     Object.assign(module.exports, {
         compactAiText,
         compactNativeDictionaryText,
+        compactNativeGloss,
         createPotNativeReport
     });
 }
