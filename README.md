@@ -6,50 +6,70 @@ Programmer Selection Translator 是一个面向程序员的 Pot 外部翻译插�
 - Homepage：`https://github.com/elio-zwd/pot-app-translate-plugin-programmer-selection`
 - 许可证：GPL-3.0-only
 
-## 第一层：本地词典与命名转换
+## 本地能力
 
 第一层完全本地运行，不发送选中文本或代码：
 
 - 拆分 `camelCase`、`PascalCase`、`snake_case`、`SCREAMING_SNAKE_CASE`、`kebab-case`；
 - 保护连续大写和带数字缩写，如 `HTTP`、`IPv6`、`I2C`、`RS485`、`ST25DV`；
 - 识别函数名、变量名、布尔变量、类名、常量/宏和文件名；
-- 使用内置编程术语与编程短语生成上下文中文含义；
+- 使用内置编程术语与编程短语生成中文上下文含义；
 - 使用 ECDICT 离线数据库补充普通词义、音标和词形原型；
 - 支持常见中文描述转英文标识符；
 - 数据库不可用时保留内置编程词典结果；
 - 最终命名格式始终由本地规则生成。
 
-## 示例
+## Pot 完整分析布局
 
 输入：
 
 ```text
-translate_service_list
+gemini-real-api-pot-smoke-test
 ```
 
-输出重点：
+启用 AI 后，主要显示：
 
 ```text
-编程含义：翻译服务列表
-普通词义：
-- translate /.../：v. 翻译；转化；解释
-- service /.../：n. 服务；服役；公共事业
-- list /.../：n. 清单；目录；列表
+文件名
+  gemini-real-api-pot-smoke-test
+
+词语拆分
+  gemini · real · API · pot · smoke · test
+
+本地释义
+  Gemini 真实 API Pot 冒烟测试
+
+AI 解释
+  用于验证 Gemini 真实 API 在 Pot 插件中的基本连通性与功能可用性。
+
+词义
+  gemini：Gemini 模型〔AI〕
+  real /'ri:əl/：真实的、实际的
+  API：应用程序编程接口
+  pot：Pot 应用〔AI〕
+  smoke /sməuk/：烟、烟雾、冒烟
+  test /test/：测试、试验、测试
+
+常用命名
+  小驼峰：geminiRealApiPotSmokeTest
+  大驼峰：GeminiRealApiPotSmokeTest
+
+分隔命名
+  下划线：gemini_real_api_pot_smoke_test
+  短横线：gemini-real-api-pot-smoke-test
+
+常量命名
+  大写下划线：GEMINI_REAL_API_POT_SMOKE_TEST
 ```
 
-其他推荐输入：
+设计原则：
 
-```text
-getIPv6Address
-ST25DV_i2c_WriteData
-apple
-services
-helloWorld
-读取用户配置
-连接是否成功
-```
-
-`services` 会显示 `service` 作为原形；未知词会明确标记为“未收录”，不会把英文原样冒充中文释义。
+- 本地释义始终保留；
+- AI 只提供整体语义解释；
+- 所有本地词义都在同一个“词义”分组中按原顺序展示；
+- 本地未收录 token 在 Gemini 成功时用 AI 补全，并标记 `〔AI〕`；
+- AI 关闭、失败或未返回某个 token 时，该项继续显示“未收录”；
+- 命名转换压缩成三个中文分组，避免五种格式各占一个区块。
 
 ## 配置
 
@@ -85,30 +105,24 @@ helloWorld
 - 标准驼峰：`getHTTPResponse` 转为 `getHttpResponse`
 - 保留大写：`getHTTPResponse` 保持 `getHTTPResponse`
 
-只有“完整分析”和“仅中文含义”需要读取普通英语数据库；单纯转换命名格式不会打开数据库，也不会调用 Gemini。
-
-## 第二层：Gemini 语义增强
-
-Gemini 只负责未知词的中文语义与标识符上下文解释，不参与标识符拆分、缩写边界或命名格式生成。任何 Gemini 失败都不会删改第一层结果。
-
 ### AI 翻译方式
 
 - `关闭，仅使用本地结果`：默认值，零网络请求、零 Gemini 状态库写入；
 - `智能补全本地未知词`：仅当本地层仍有未知 token 时请求，推荐日常使用；
 - `每次使用 AI，并与本地结果同时显示`：完整分析或仅中文含义时始终请求。
 
-AI 成功时，Pot 原生结果会同时保留“本地含义”和“AI 补充”。AI 不会覆盖本地词典、拆分结果或命名转换。
+Gemini 不参与标识符拆分、缩写边界或命名格式生成。任何 Gemini 失败都不会删改本地结果。
 
 ### Gemini 发送范围
 
 - `unknown_tokens`：默认值。仅发送未知 token 和最少必要相邻 token，不发送完整标识符；
 - `identifier`：用户明确选择后，才在请求中增加完整标识符。
 
-无论选择哪种模式，插件都不会发送完整源码行、文件路径、项目名称、未选中的剪贴板内容或本地数据库内容。
+插件不会发送完整源码行、文件路径、项目名称、未选中的剪贴板内容或本地数据库内容。
 
-### Gemini Key 池
+## Gemini Key 池
 
-`apiKeyPool` 最多接受 20 个唯一合法 Key，支持换行、英文逗号、中文逗号和分号分隔。可以为 Key 添加仅用于本地辨认的名称，也可以用 `#` 前缀禁用：
+`apiKeyPool` 最多接受 20 个唯一合法 Key，支持换行、英文逗号、中文逗号和分号分隔。可以添加本地名称，也可以用 `#` 前缀禁用：
 
 ```text
 主要=<KEY_1>
@@ -116,32 +130,27 @@ AI 成功时，Pot 原生结果会同时保留“本地含义”和“AI 补充�
 #停用=<KEY_3>
 ```
 
-同一 Key 重复出现时保留第一次出现的位置、名称和启用状态。名称不会发送给 Google。
-
 调度策略固定为 `failover_only`：
 
-- 成功后继续使用当前 Key，不在成功请求间轮询；
-- 只有请求失败并且错误类型允许切换时，才尝试下一个 Key；
+- 成功后继续使用当前 Key；
+- 只有请求失败且错误类型允许切换时，才尝试下一个 Key；
 - 单次逻辑请求默认最多尝试 5 个不同 Key，可配置为 1、3、5、10 或 20；
-- `401/403` 将当前 Key 标记为无效；
+- `401/403` 标记当前 Key 无效；
 - `429` 按 `Retry-After` 或本地阶梯策略进入冷却；
-- `408`、网络异常和超时会在当前 Key 额外重试 1 次；
-- `5xx` 会在当前 Key 额外重试最多 2 次；
+- `408`、网络异常和超时在当前 Key 额外重试 1 次；
+- `5xx` 在当前 Key 额外重试最多 2 次；
 - `400`、`404` 或结构化响应非法时停止当前 Gemini 请求，不切换模型。
 
-运行时调度状态保存在插件目录内的 `gemini_state.db`，其中只包含 SHA-256 指纹、状态、冷却时间和计数，不保存完整 Key、Key 尾号、用户输入或模型输出。该文件安装后按需创建，不进入 Git 或 Artifact；状态数据库不可用时会降级为从第一个启用 Key 开始的无持久化模式。
+运行时调度状态保存在插件目录内的 `gemini_state.db`。该数据库只保存 SHA-256 指纹、状态、冷却时间和计数，不保存完整 Key、Key 尾号、用户输入或模型输出。
 
-### API 与模型
+## API 与模型
 
-默认模型为 `gemini-3.5-flash-lite`。设置页提供以下稳定模型预设：
+默认模型为 `gemini-3.5-flash-lite`。设置页还提供：
 
-- `gemini-3.5-flash-lite`（默认）；
 - `gemini-3.6-flash`；
 - `gemini-3.5-flash`；
 - `gemini-3.1-flash-lite`；
 - 自定义模型 ID。
-
-自定义模型只允许字母、数字、点、下划线和连字符，长度最多 80；不接受 URL、路径、查询参数或 `models/` 前缀。插件不使用浮动 `latest` 预设，也不实现备用模型自动切换。
 
 Gemini 请求使用 Interactions API：
 
@@ -149,11 +158,11 @@ Gemini 请求使用 Interactions API：
 POST https://generativelanguage.googleapis.com/v1beta/interactions
 ```
 
-- API Key 只通过 `x-goog-api-key` 请求头传递，不拼接到 URL；
+- API Key 只通过 `x-goog-api-key` 请求头传递；
 - 请求显式设置 `store: false`、`stream: false`、`background: false`；
 - 使用顶层 `response_format` 请求 JSON 结构化文本；
 - 不使用 `previous_interaction_id`、工具调用、后台任务或流式输出；
-- 模型响应仍由本地代码执行字段白名单、token 白名单、类型、数量和长度校验。
+- 模型响应由本地代码执行字段白名单、token 白名单、类型、数量和长度校验。
 
 Google 官方依据：
 
@@ -161,14 +170,12 @@ Google 官方依据：
 - `https://ai.google.dev/api/interactions-api-v1`
 - `https://ai.google.dev/gemini-api/docs/structured-output`
 - `https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite`
-- `https://ai.google.dev/gemini-api/docs/latest-model`
-- `https://ai.google.dev/gemini-api/docs/changelog`
 
-### API Key 明文限制
+## API Key 明文限制
 
 **Gemini API Key 池在 Pot 插件设置页面可能以明文显示。**
 
-当前 Pot 通用外部插件配置页没有专用密码输入类型，本项目不会修改 Pot 主程序。请只使用用户自行创建的 Gemini API Key，并避免在录屏、截图或远程协助时暴露设置页面。
+当前 Pot 通用外部插件配置页没有专用密码输入类型。请避免在录屏、截图或远程协助时暴露设置页面。
 
 本仓库不会：
 
@@ -177,9 +184,9 @@ Google 官方依据：
 - 将完整 Key 写入 `.env`、测试快照、状态数据库或 Artifact；
 - 输出完整请求头或包含 Key 的配置对象。
 
-### 回退策略
+## 回退策略
 
-以下情况全部静默回退到逐字不变的完整本地结果：
+以下情况全部保留完整本地结果：
 
 - 未填写可用 Key、全部 Key 被禁用或达到尝试上限；
 - 模型配置非法；
@@ -187,10 +194,6 @@ Google 官方依据：
 - Interaction 未完成、缺少 `model_output`、响应为空或非 JSON；
 - Markdown 代码围栏、额外字段、未知 token 键、字段类型错误或内容超长；
 - Pot 当前环境不提供网络或状态数据库能力。
-
-Gemini 成功时，完整分析会同时显示本地含义与 AI 补充，不会覆盖本地结果。
-
-Gemini 失败时，不附加远端错误信息，也不删减本地的原文、识别类型、拆分、编程含义、普通词义、未知词和命名格式转换。
 
 ## 安装
 
@@ -201,7 +204,7 @@ Gemini 失败时，不附加远端错误信息，也不删减本地的原文、�
 5. 在 Pot 中打开：`偏好设置 → 服务设置 → 翻译 → 添加外部插件 → 安装外部插件`。
 6. 选择 `.potext`，保存配置，并将“程序员划词翻译”加入翻译服务列表。
 
-## ECDICT 数据来源与隐私
+## ECDICT 数据来源
 
 普通英语数据来自 MIT 许可的 ECDICT，构建固定使用提交：
 
@@ -211,13 +214,6 @@ bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b
 
 完整数据源文件为 `ecdict.csv`。GitHub Actions 下载固定版本并生成 `dictionary.db`；数据库是构建产物，不提交到 Git。许可和转换说明见 `THIRD_PARTY_NOTICES.md`。
 
-第一层运行时：
-
-- 不访问 ECDICT 网站；
-- 不发送网络请求；
-- 不上传代码、标识符或查询记录；
-- 只读取插件目录内的 `dictionary.db`。
-
 ## 本地开发与测试
 
 要求 Node.js 18+ 和 Python 3.10+。
@@ -226,8 +222,6 @@ bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b
 npm test
 python scripts/test_dictionary_build.py
 ```
-
-`npm test` 会先把 `src/runtime-*.js` 合成为 Pot 要求的单文件 `main.js`，再运行第一层、Key 池、Interactions API 和 Pot `eval()` 加载契约测试。Gemini 测试全部使用 mock 网络，不请求真实 Gemini API，也不依赖真实 SQLite。
 
 构建完整离线词典：
 
@@ -262,5 +256,4 @@ THIRD_PARTY_NOTICES.md
 - 普通英语词典主要面向英文单词，不替代通用句子翻译；
 - AI 默认关闭，启用后才会访问 Google Gemini API；
 - Pot 外部插件设置页可能明文显示 Key；
-- 当前版本不实现流式输出、后台任务、工具调用、备用模型自动切换或成功请求轮询；
-- `gemini_state.db` 仅保存调度元数据，不保存 Key 或翻译内容。
+- 当前版本不实现流式输出、后台任务、工具调用或备用模型自动切换。
