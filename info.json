@@ -11,11 +11,11 @@
       "type": "select",
       "options": {
         "report": "完整分析",
-        "camel": "camelCase",
-        "pascal": "PascalCase",
-        "snake": "snake_case",
-        "screaming": "SCREAMING_SNAKE_CASE",
-        "kebab": "kebab-case",
+        "camel": "小驼峰命名",
+        "pascal": "大驼峰命名",
+        "snake": "下划线命名",
+        "screaming": "大写下划线命名",
+        "kebab": "短横线命名",
         "words": "拆分词组",
         "chinese": "仅中文含义"
       }
@@ -55,12 +55,12 @@
     },
     {
       "key": "aiMode",
-      "display": "Gemini 语义增强",
+      "display": "AI 翻译方式",
       "type": "select",
       "options": {
-        "off": "关闭（默认，零网络请求）",
-        "unknown_only": "仅本地未知词",
-        "always": "始终增强"
+        "off": "关闭，仅使用本地结果（默认）",
+        "unknown_only": "智能补全本地未知词（推荐）",
+        "always": "每次使用 AI，并与本地结果同时显示"
       }
     },
     {
