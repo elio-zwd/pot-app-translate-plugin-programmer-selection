@@ -234,7 +234,13 @@ python scripts/test_dictionary_build.py
 ```bash
 curl -L --fail \
   -o /tmp/ecdict.csv \
-  https://raw.githubusercontent.com/skywind3000/ECDICT/bc015ed2e24cf6dbbb7fe32c1dadaf8b/ecdict.csv
+  https://raw.githubusercontent.com/skywind3000/ECDICT/bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b/ecdict.csv
+
+python scripts/build_dictionary.py \
+  --input /tmp/ecdict.csv \
+  --output dictionary.db \
+  --meta dictionary.meta.json \
+  --source-commit bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b
 ```
 
 最终 `.potext` 根目录只包含：
