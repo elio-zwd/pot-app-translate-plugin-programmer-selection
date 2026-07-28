@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const plugin = require('../main.js');
 
 const TEST_KEY = 'test-gemini-key-not-real';
@@ -106,20 +108,25 @@ test('Pot 运行时复用词典连接池且不会主动关闭', async () => {
     assert.doesNotMatch(JSON.stringify(second), /closed pool/);
 });
 
-test('Pot 原生报告使用清晰分组并生成稳定核心含义', async () => {
+test('Pot 原生报告使用紧凑分组和中文命名标签', async () => {
     const { options } = createPotOptions();
     const result = await plugin.translate('gemini-real-api-pot-smoke-test', 'auto', 'zh_cn', options);
     const rows = explanationMap(result);
 
     assert.equal(rows.get('文件名')[0], 'gemini-real-api-pot-smoke-test');
-    assert.equal(rows.get('拆分')[0], 'gemini · real · API · pot · smoke · test');
-    assert.equal(rows.get('核心含义')[0], 'Gemini 真实 API Pot 冒烟测试');
-    assert.equal(rows.get('命名 · camelCase')[0], 'geminiRealApiPotSmokeTest');
-    assert.equal(rows.get('命名 · kebab-case')[0], 'gemini-real-api-pot-smoke-test');
-    assert.match((result.associations || []).join('\n'), /AI 状态：已关闭/);
+    assert.equal(rows.get('词语拆分')[0], 'gemini · real · API · pot · smoke · test');
+    assert.equal(rows.get('本地含义')[0], 'Gemini 真实 API Pot 冒烟测试');
+    assert.match(rows.get('本地词义')[0], /real .*：真实的/);
+    assert.match(rows.get('本地词义')[0], /smoke .*：烟/);
+    assert.match(rows.get('本地词义')[0], /test .*：测试/);
+    assert.equal(rows.get('常用命名')[0], '小驼峰：geminiRealApiPotSmokeTest　大驼峰：GeminiRealApiPotSmokeTest');
+    assert.equal(rows.get('分隔命名')[0], '下划线：gemini_real_api_pot_smoke_test　短横线：gemini-real-api-pot-smoke-test');
+    assert.equal(rows.get('常量命名')[0], '大写下划线：GEMINI_REAL_API_POT_SMOKE_TEST');
+    assert.equal(rows.has('AI · gemini'), false);
+    assert.match((result.associations || []).join('\n'), /AI 状态：已关闭，仅显示本地结果/);
 });
 
-test('Pot 原生报告把 Gemini 结果放入独立 AI 分组', async () => {
+test('Pot 原生报告把 AI 与本地结果同时紧凑显示', async () => {
     const { options, state } = createPotOptions({
         aiMode: 'unknown_only',
         fetchImpl: async () => interactionResponse({
@@ -135,10 +142,25 @@ test('Pot 原生报告把 Gemini 结果放入独立 AI 分组', async () => {
     const rows = explanationMap(result);
 
     assert.equal(state.networkCalls, 1);
-    assert.equal(rows.get('AI 语义')[0], '这是 Gemini 真实 API 与 Pot 的冒烟测试标识符。');
-    assert.equal(rows.get('AI · gemini')[0], 'Gemini 模型');
-    assert.equal(rows.get('AI · pot')[0], 'Pot 应用');
+    assert.equal(rows.get('本地含义')[0], 'Gemini 真实 API Pot 冒烟测试');
+    assert.match(rows.get('AI 补充')[0], /这是 Gemini 真实 API 与 Pot 的冒烟测试标识符/);
+    assert.match(rows.get('AI 补充')[0], /gemini：Gemini 模型/);
+    assert.match(rows.get('AI 补充')[0], /pot：Pot 应用/);
+    assert.equal(rows.has('AI · gemini'), false);
     assert.doesNotMatch((result.associations || []).join('\n'), /AI 状态：已关闭/);
+});
+
+test('设置页使用中文命名选项并明确 AI 翻译方式', () => {
+    const info = JSON.parse(fs.readFileSync(path.join(__dirname, '../info.json'), 'utf8'));
+    const needs = new Map(info.needs.map((item) => [item.key, item]));
+
+    assert.equal(needs.get('outputStyle').options.camel, '小驼峰命名');
+    assert.equal(needs.get('outputStyle').options.pascal, '大驼峰命名');
+    assert.equal(needs.get('outputStyle').options.snake, '下划线命名');
+    assert.equal(needs.get('aiMode').display, 'AI 翻译方式');
+    assert.match(needs.get('aiMode').options.off, /仅使用本地结果/);
+    assert.match(needs.get('aiMode').options.unknown_only, /智能补全/);
+    assert.match(needs.get('aiMode').options.always, /与本地结果同时显示/);
 });
 
 test('无 setResult 的兼容调用继续返回可复制纯文本', async () => {
