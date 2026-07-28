@@ -23,8 +23,8 @@ function aiTranslatedWord(geminiResult, token) {
 }
 
 /**
- * 在同一个“词义”分组中按原顺序展示全部本地词义。
- * 本地未收录 token 在 Gemini 成功时使用 AI 结果补全，并明确标记来源。
+ * 在同一个“词义”分组中按原顺序展示全部词义。
+ * 本地词典已有音标时保留音标；缩写、数字和 AI 补全项不伪造音标。
  */
 function compactNativeDictionaryItems(lines, geminiResult) {
     const items = [];
@@ -65,11 +65,16 @@ function unresolvedUnknownWords(unknownWords, geminiResult) {
     return (unknownWords || []).filter((word) => !aiTranslatedWord(geminiResult, word));
 }
 
+function configShows(config, key) {
+    return !config || config[key] !== 'hide';
+}
+
 /**
- * Pot 原生报告采用紧凑分组：AI 只解释整体语义，逐词 AI 结果仅用于补全本地未收录词。
- * 本地结果、拆分和命名转换始终保留，Gemini 不参与覆盖。
+ * AI 成功时使用“AI 释义”作为顶部主释义；AI 不可用时回退“本地释义”。
+ * 命名转换和状态提示可由用户独立隐藏，词义始终逐词换行展示。
  */
 function createPotNativeReport(model, sections, geminiResult) {
+    const config = model.config || {};
     const explanations = [
         {
             trait: TYPE_LABELS[model.detectedType] || model.detectedType,
@@ -81,55 +86,59 @@ function createPotNativeReport(model, sections, geminiResult) {
         }
     ];
 
-    if (model.dictionaryMode === 'programming' || model.dictionaryMode === 'both') {
+    const aiText = compactAiText(geminiResult);
+    if (aiText) {
+        explanations.push({ trait: 'AI 释义', explains: [aiText] });
+    } else if (model.dictionaryMode === 'programming' || model.dictionaryMode === 'both') {
         explanations.push({ trait: '本地释义', explains: [sections.programmingText] });
     }
-
-    const aiText = compactAiText(geminiResult);
-    if (aiText) explanations.push({ trait: 'AI 解释', explains: [aiText] });
 
     if (model.dictionaryMode === 'general' || model.dictionaryMode === 'both') {
         const dictionaryText = compactNativeDictionaryText(sections.generalLines, geminiResult);
         if (dictionaryText) explanations.push({ trait: '词义', explains: [dictionaryText] });
     }
 
-    explanations.push(
-        {
-            trait: '常用命名',
-            explains: [[
-                `小驼峰：${toCamelCase(model.words, model.acronymStyle)}`,
-                `大驼峰：${toPascalCase(model.words, model.acronymStyle)}`
-            ].join(COMPACT_NATIVE_LINE_SEPARATOR)]
-        },
-        {
-            trait: '分隔命名',
-            explains: [[
-                `下划线：${toSnakeCase(model.words)}`,
-                `短横线：${toKebabCase(model.words)}`
-            ].join(COMPACT_NATIVE_LINE_SEPARATOR)]
-        },
-        {
-            trait: '常量命名',
-            explains: [`大写下划线：${toScreamingSnakeCase(model.words)}`]
-        }
-    );
+    if (configShows(config, 'showNamingConversions')) {
+        explanations.push(
+            {
+                trait: '常用命名',
+                explains: [[
+                    `小驼峰：${toCamelCase(model.words, model.acronymStyle)}`,
+                    `大驼峰：${toPascalCase(model.words, model.acronymStyle)}`
+                ].join(COMPACT_NATIVE_LINE_SEPARATOR)]
+            },
+            {
+                trait: '分隔命名',
+                explains: [[
+                    `下划线：${toSnakeCase(model.words)}`,
+                    `短横线：${toKebabCase(model.words)}`
+                ].join(COMPACT_NATIVE_LINE_SEPARATOR)]
+            },
+            {
+                trait: '常量命名',
+                explains: [`大写下划线：${toScreamingSnakeCase(model.words)}`]
+            }
+        );
+    }
 
     const associations = [];
-    const unresolved = unresolvedUnknownWords(sections.unknownWords, geminiResult);
-    if (unresolved.length > 0) associations.push(`仍未收录：${unresolved.join(', ')}`);
-    if (model.unknownChinese) associations.push(`未收录中文：${model.unknownChinese}`);
-    if (sections.warning) associations.push(`词典状态：${sections.warning}`);
+    if (configShows(config, 'showStatusMessages')) {
+        const unresolved = unresolvedUnknownWords(sections.unknownWords, geminiResult);
+        if (unresolved.length > 0) associations.push(`仍未收录：${unresolved.join(', ')}`);
+        if (model.unknownChinese) associations.push(`未收录中文：${model.unknownChinese}`);
+        if (sections.warning) associations.push(`词典状态：${sections.warning}`);
 
-    if (!geminiResult || geminiResult.status !== 'success') {
-        const reason = geminiResult && geminiResult.reason;
-        if (reason === 'off') {
-            associations.push('AI 状态：已关闭，仅显示本地结果。');
-        } else if (reason === 'local_hit' || reason === 'no_tokens') {
-            associations.push('AI 状态：本地已完整命中，本次未请求 AI。');
-        } else if (reason === 'missing_key' || reason === 'no_available_key') {
-            associations.push('AI 状态：没有可用 Key，已保留本地结果。');
-        } else if (geminiResult && geminiResult.status === 'failed') {
-            associations.push('AI 状态：请求未完成，已保留本地结果。');
+        if (!geminiResult || geminiResult.status !== 'success') {
+            const reason = geminiResult && geminiResult.reason;
+            if (reason === 'off') {
+                associations.push('AI 状态：已关闭，仅显示本地结果。');
+            } else if (reason === 'local_hit' || reason === 'no_tokens') {
+                associations.push('AI 状态：本地已完整命中，本次未请求 AI。');
+            } else if (reason === 'missing_key' || reason === 'no_available_key') {
+                associations.push('AI 状态：没有可用 Key，已保留本地结果。');
+            } else if (geminiResult && geminiResult.status === 'failed') {
+                associations.push('AI 状态：请求未完成，已保留本地结果。');
+            }
         }
     }
 
@@ -144,6 +153,7 @@ if (typeof module !== 'undefined' && module.exports) {
         compactNativeDictionaryItems,
         compactNativeDictionaryText,
         compactNativeGloss,
+        configShows,
         createPotNativeReport,
         unresolvedUnknownWords
     });
