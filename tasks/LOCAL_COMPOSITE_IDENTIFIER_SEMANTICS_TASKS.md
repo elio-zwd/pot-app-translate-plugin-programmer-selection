@@ -93,8 +93,8 @@
 - [x] 首轮 Artifact `8709403719` 下载与六文件检查通过；
 - [x] 首轮敏感信息、旧 API 与模板残留扫描通过；
 - [x] 补充全部程序员缩写显式测试；
-- [ ] 等待最终文档提交后的最新 GitHub Actions；
-- [ ] 下载并检查最终 Head 对应 `.potext` Artifact；
+- [x] 最新 GitHub Actions 全部通过；
+- [x] 最新 Head 对应 `.potext` Artifact 下载与检查通过；
 - [x] 输出 Pot GUI 烟测步骤；
 - [ ] 用户执行 Pot GUI 烟测并回传结果；
 - [x] 保持 Draft，未经授权不合并。
