@@ -57,6 +57,23 @@ jobs:
             throw new Error('legacy visible config remains');
           }
           const byKey = Object.fromEntries(needs.map((item) => [item.key, item]));
+          const outputStyles = Object.keys((byKey.outputStyle && byKey.outputStyle.options) || {});
+          const expectedOutputStyles = [
+            'minimal', 'report', 'camel', 'pascal', 'snake',
+            'screaming', 'kebab', 'words', 'chinese'
+          ];
+          if (!byKey.outputStyle || byKey.outputStyle.type !== 'select') {
+            throw new Error('outputStyle select is missing');
+          }
+          if (JSON.stringify(outputStyles) !== JSON.stringify(expectedOutputStyles)) {
+            throw new Error(`unexpected outputStyle order: ${outputStyles.join(',')}`);
+          }
+          if (!byKey.outputStyle.options.minimal.includes('默认')) {
+            throw new Error('minimal must be the new default');
+          }
+          if (byKey.outputStyle.options.report !== '完整分析') {
+            throw new Error('report legacy option changed');
+          }
           if (byKey.aiMode.type !== 'select' || Object.keys(byKey.aiMode.options)[0] !== 'off') {
             throw new Error('aiMode must default to off');
           }
@@ -93,12 +110,15 @@ jobs:
           test -f src/runtime-02-gemini.js
           test -f src/runtime-03-gemini-key-pool.js
           test -f src/runtime-04-gemini-interactions.js
+          test -f src/runtime-09-output-style-compat.js
           test -f scripts/build_runtime.py
           test -f scripts/build_dictionary.py
           test -f tests/main.test.cjs
           test -f tests/gemini.test.cjs
           test -f tests/gemini-key-pool.test.cjs
           test -f tests/gemini-interactions.test.cjs
+          test -f tests/output-style-compat.test.cjs
+          grep -Fq 'node --test tests/*.test.cjs' package.json
           test -f icon.svg
           test -f THIRD_PARTY_NOTICES.md
           test ! -f lingva.svg
