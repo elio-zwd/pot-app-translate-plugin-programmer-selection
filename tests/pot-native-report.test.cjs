@@ -149,7 +149,7 @@ test('minimal 和 report 在旧 Pot 中返回同一完整紧凑原生报告', as
         assert.equal(rows.get('本地释义')[0], '以小端序向 NFC 设备写入 16 位无符号整数', outputStyle);
         assert.deepEqual(splitNativeLines(rows.get('词义')[0]), [
             'NFC：近场通信',
-            'write：写入',
+            'write：未收录',
             'U16：16 位无符号整数',
             'LE：小端序'
         ], outputStyle);
