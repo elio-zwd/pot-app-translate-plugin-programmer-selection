@@ -55,14 +55,25 @@ helloWorld
 
 ### 输出格式
 
-- 完整分析
-- 小驼峰命名（`camelCase`）
-- 大驼峰命名（`PascalCase`）
-- 下划线命名（`snake_case`）
-- 大写下划线命名（`SCREAMING_SNAKE_CASE`）
-- 短横线命名（`kebab-case`）
-- 拆分词组
-- 仅中文含义
+- 极简结果（`minimal`，新默认）：支持结构化结果的宿主首屏显示核心释义，完整详情仍保留在同一个结果中；
+- 完整分析（`report`）：支持结构化结果的宿主默认展示完整报告；
+- 小驼峰命名（`camelCase`）；
+- 大驼峰命名（`PascalCase`）；
+- 下划线命名（`snake_case`）；
+- 大写下划线命名（`SCREAMING_SNAKE_CASE`）；
+- 短横线命名（`kebab-case`）；
+- 拆分词组；
+- 仅中文含义。
+
+配置兼容规则：
+
+- 新安装、缺少 `outputStyle`、空字符串或未知值统一规范化为 `minimal`；
+- 已保存的 `report` 继续保持完整分析，不会被强制迁移；
+- `camel`、`pascal`、`snake`、`screaming`、`kebab`、`words`、`chinese` 全部保留原值和原字符串输出行为；
+- 只有 `options.host.resultSchemas` 精确包含 `pot.programmer-result.v1` 时，`minimal` 和 `report` 才进入结构化结果路径；
+- 只有 `setResult` 不代表宿主支持 v1；旧 Pot、未知宿主或大小写不匹配的能力声明都会获得完整 `report` 回退，不会只返回摘要。
+
+`minimal` 与 `report` 的发布需要桌面端宿主能力协商和插件/桌面端组合验收。本阶段只提供配置与纯路由决策，尚未接入现有 `translate()`，不得把该 Wave 1 分支单独作为可发布版本。
 
 ### 本地词典显示
 
@@ -91,7 +102,7 @@ helloWorld
 - `显示状态提示`：可选择显示或不显示词典状态、AI 状态和剩余未收录词；
 - 两项均默认显示，旧配置未保存这些字段时也按显示处理。
 
-只有“完整分析”和“仅中文含义”需要读取普通英语数据库；单纯转换命名格式不会打开数据库，也不会调用 Gemini。
+`minimal`、`report` 和“仅中文含义”需要读取普通英语数据库；单纯转换命名格式不会打开数据库，也不会调用 Gemini。
 
 ## 第二层：Gemini 语义增强
 
