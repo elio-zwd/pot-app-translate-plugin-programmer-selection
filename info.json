@@ -10,6 +10,7 @@
       "display": "输出格式",
       "type": "select",
       "options": {
+        "minimal": "极简结果（默认）",
         "report": "完整分析",
         "camel": "小驼峰命名",
         "pascal": "大驼峰命名",
