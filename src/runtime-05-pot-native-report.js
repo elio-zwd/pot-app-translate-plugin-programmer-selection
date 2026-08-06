@@ -152,10 +152,40 @@ function createPotNativeReport(model, sections, geminiResult) {
     return associations.length > 0 ? { explanations, associations } : { explanations };
 }
 
+/**
+ * 本地分析使用规范化 token；结构化结果对无分隔符标识符恢复源片段大小写，
+ * 以满足冻结 fixture，同时不重复执行词典或 Gemini 处理。
+ */
+function createStructuredProgrammerModel(model) {
+    const input = String(model.input || '');
+    if (/[\s_.\-/:\\]/.test(input)) {
+        return { ...model, words: [...model.words] };
+    }
+
+    const lowerInput = input.toLowerCase();
+    let offset = 0;
+    const words = model.words.map((word) => {
+        const canonical = canonicalAcronym(word);
+        if (canonical) return canonical;
+        const normalized = lowerWord(word);
+        const index = lowerInput.indexOf(normalized, offset);
+        if (index < 0) return word;
+        offset = index + normalized.length;
+        return input.slice(index, offset);
+    });
+    return { ...model, words };
+}
+
 async function translate(text, _from, _to, options = {}) {
-    const model = prepareIdentifier(text, options.config || {});
-    if (model.outputStyle !== 'report' && model.outputStyle !== 'chinese') {
-        return formatByStyle(model.words, model.outputStyle, model.acronymStyle);
+    const config = options.config || {};
+    const route = decideProgrammerOutputRoute(config, options);
+    const model = prepareIdentifier(text, {
+        ...config,
+        outputStyle: route.outputStyle
+    });
+
+    if (route.resultKind === 'direct' && route.outputStyle !== 'chinese') {
+        return formatByStyle(model.words, route.outputStyle, model.acronymStyle);
     }
 
     const sections = await buildDictionarySections(model, options);
@@ -164,18 +194,37 @@ async function translate(text, _from, _to, options = {}) {
         words: model.words,
         unknownWords: sections.unknownWords,
         localProgrammingText: sections.programmingText,
-        config: options.config || {},
+        config,
         utils: options.utils || {}
     });
 
-    if (model.outputStyle === 'report' && typeof options.setResult === 'function') {
-        return createPotNativeReport(model, sections, geminiResult, options.config || {});
+    if (route.outputStyle === 'chinese') {
+        return appendGeminiSection(renderChineseOnly(model, sections), geminiResult);
     }
 
-    const localText = model.outputStyle === 'chinese'
-        ? renderChineseOnly(model, sections)
-        : createReport(model, sections);
-    return appendGeminiSection(localText, geminiResult);
+    if (route.resultKind === 'structured') {
+        const presentation = route.structuredDensity === 'report'
+            ? {
+                preferredDensity: 'report',
+                initiallyExpanded: ['identifier', 'tokenMeanings', 'naming', 'diagnostics']
+            }
+            : {
+                preferredDensity: 'minimal',
+                initiallyExpanded: []
+            };
+        return createProgrammerResultV1(
+            createStructuredProgrammerModel(model),
+            sections,
+            geminiResult,
+            presentation
+        );
+    }
+
+    if (typeof options.setResult === 'function') {
+        return createPotNativeReport(model, sections, geminiResult, config);
+    }
+
+    return appendGeminiSection(createReport(model, sections), geminiResult);
 }
 
 if (typeof module !== 'undefined' && module.exports) {
