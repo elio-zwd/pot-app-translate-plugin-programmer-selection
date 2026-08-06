@@ -135,6 +135,42 @@ test('AI 关闭时回退本地释义并逐词展示音标和未收录项', async
     assert.match((result.associations || []).join('\n'), /AI 状态：已关闭，仅显示本地结果/);
 });
 
+test('minimal 和 report 在旧 Pot 中返回同一完整紧凑原生报告', async () => {
+    const results = [];
+    for (const outputStyle of ['minimal', 'report']) {
+        const { options, state } = createPotOptions({ config: { outputStyle } });
+        const result = await plugin.translate('NFC_WriteU16LE', 'auto', 'zh_cn', options);
+        const rows = explanationMap(result);
+
+        assert.equal(typeof result, 'object', outputStyle);
+        assert.equal(Object.hasOwn(result, 'schema'), false, outputStyle);
+        assert.equal(rows.get('函数名')[0], 'NFC_WriteU16LE', outputStyle);
+        assert.equal(rows.get('词语拆分')[0], 'NFC · write · U16 · LE', outputStyle);
+        assert.equal(rows.get('本地释义')[0], '以小端序向 NFC 设备写入 16 位无符号整数', outputStyle);
+        assert.deepEqual(splitNativeLines(rows.get('词义')[0]), [
+            'NFC：近场通信',
+            'write：写入',
+            'U16：16 位无符号整数',
+            'LE：小端序'
+        ], outputStyle);
+        assert.deepEqual(splitNativeLines(rows.get('常用命名')[0]), [
+            '小驼峰：nfcWriteU16Le',
+            '大驼峰：NfcWriteU16Le'
+        ], outputStyle);
+        assert.deepEqual(splitNativeLines(rows.get('分隔命名')[0]), [
+            '下划线：nfc_write_u16_le',
+            '短横线：nfc-write-u16-le'
+        ], outputStyle);
+        assert.equal(rows.get('常量命名')[0], '大写下划线：NFC_WRITE_U16_LE', outputStyle);
+        assert.equal(state.selectCalls, 1, outputStyle);
+        assert.equal(state.closeCalls, 0, outputStyle);
+        assert.equal(state.networkCalls, 0, outputStyle);
+        results.push(result);
+    }
+
+    assert.deepEqual(results[0], results[1]);
+});
+
 test('AI 成功时只显示 AI 释义并补全本地未收录词', async () => {
     const { options, state } = createPotOptions({
         aiMode: 'unknown_only',
@@ -182,22 +218,25 @@ test('部分 AI 补全后只报告剩余未收录词', async () => {
     assert.match((result.associations || []).join('\n'), /仍未收录：pot/);
 });
 
-test('用户可以同时隐藏命名转换和状态提示', async () => {
-    const { options } = createPotOptions({
-        config: {
-            showNamingConversions: 'hide',
-            showStatusMessages: 'hide'
-        }
-    });
+test('minimal 和 report 都继续支持隐藏命名转换和状态提示', async () => {
+    for (const outputStyle of ['minimal', 'report']) {
+        const { options } = createPotOptions({
+            config: {
+                outputStyle,
+                showNamingConversions: 'hide',
+                showStatusMessages: 'hide'
+            }
+        });
 
-    const result = await plugin.translate('gemini-real-api-pot-smoke-test', 'auto', 'zh_cn', options);
-    const rows = explanationMap(result);
+        const result = await plugin.translate('gemini-real-api-pot-smoke-test', 'auto', 'zh_cn', options);
+        const rows = explanationMap(result);
 
-    assert.equal(rows.has('常用命名'), false);
-    assert.equal(rows.has('分隔命名'), false);
-    assert.equal(rows.has('常量命名'), false);
-    assert.ok(rows.has('词义'));
-    assert.equal(Object.hasOwn(result, 'associations'), false);
+        assert.equal(rows.has('常用命名'), false, outputStyle);
+        assert.equal(rows.has('分隔命名'), false, outputStyle);
+        assert.equal(rows.has('常量命名'), false, outputStyle);
+        assert.ok(rows.has('词义'), outputStyle);
+        assert.equal(Object.hasOwn(result, 'associations'), false, outputStyle);
+    }
 });
 
 test('设置页包含中文命名、AI 翻译和附加区块显示选项', () => {
