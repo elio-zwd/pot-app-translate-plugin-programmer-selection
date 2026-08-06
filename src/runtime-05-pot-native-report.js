@@ -152,6 +152,30 @@ function createPotNativeReport(model, sections, geminiResult) {
     return associations.length > 0 ? { explanations, associations } : { explanations };
 }
 
+/**
+ * 本地分析使用规范化 token；结构化结果对无分隔符标识符恢复源片段大小写，
+ * 以满足冻结 fixture，同时不重复执行词典或 Gemini 处理。
+ */
+function createStructuredProgrammerModel(model) {
+    const input = String(model.input || '');
+    if (/[\s_.\-/:\\]/.test(input)) {
+        return { ...model, words: [...model.words] };
+    }
+
+    const lowerInput = input.toLowerCase();
+    let offset = 0;
+    const words = model.words.map((word) => {
+        const canonical = canonicalAcronym(word);
+        if (canonical) return canonical;
+        const normalized = lowerWord(word);
+        const index = lowerInput.indexOf(normalized, offset);
+        if (index < 0) return word;
+        offset = index + normalized.length;
+        return input.slice(index, offset);
+    });
+    return { ...model, words };
+}
+
 async function translate(text, _from, _to, options = {}) {
     const config = options.config || {};
     const route = decideProgrammerOutputRoute(config, options);
@@ -188,7 +212,12 @@ async function translate(text, _from, _to, options = {}) {
                 preferredDensity: 'minimal',
                 initiallyExpanded: []
             };
-        return createProgrammerResultV1(model, sections, geminiResult, presentation);
+        return createProgrammerResultV1(
+            createStructuredProgrammerModel(model),
+            sections,
+            geminiResult,
+            presentation
+        );
     }
 
     if (typeof options.setResult === 'function') {
