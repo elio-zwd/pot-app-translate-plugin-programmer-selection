@@ -128,6 +128,16 @@ jobs:
             -E 'plugin\.com\.pot-app\.lingva|lingva\.pot-app\.com|requestPath' \
             src info.json README.md package.json icon.svg THIRD_PARTY_NOTICES.md
 
+      - name: Verify output style compatibility
+        run: |
+          set -euo pipefail
+          node --test tests/output-style-compat.test.cjs
+          python scripts/build_runtime.py
+          node --test tests/*.test.cjs
+          python scripts/test_dictionary_build.py
+          git diff --check
+          git status --short
+
       - name: Run JavaScript unit tests
         run: npm test
 
