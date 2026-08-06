@@ -153,9 +153,15 @@ function createPotNativeReport(model, sections, geminiResult) {
 }
 
 async function translate(text, _from, _to, options = {}) {
-    const model = prepareIdentifier(text, options.config || {});
-    if (model.outputStyle !== 'report' && model.outputStyle !== 'chinese') {
-        return formatByStyle(model.words, model.outputStyle, model.acronymStyle);
+    const config = options.config || {};
+    const route = decideProgrammerOutputRoute(config, options);
+    const model = prepareIdentifier(text, {
+        ...config,
+        outputStyle: route.outputStyle
+    });
+
+    if (route.resultKind === 'direct' && route.outputStyle !== 'chinese') {
+        return formatByStyle(model.words, route.outputStyle, model.acronymStyle);
     }
 
     const sections = await buildDictionarySections(model, options);
@@ -164,18 +170,32 @@ async function translate(text, _from, _to, options = {}) {
         words: model.words,
         unknownWords: sections.unknownWords,
         localProgrammingText: sections.programmingText,
-        config: options.config || {},
+        config,
         utils: options.utils || {}
     });
 
-    if (model.outputStyle === 'report' && typeof options.setResult === 'function') {
-        return createPotNativeReport(model, sections, geminiResult, options.config || {});
+    if (route.outputStyle === 'chinese') {
+        return appendGeminiSection(renderChineseOnly(model, sections), geminiResult);
     }
 
-    const localText = model.outputStyle === 'chinese'
-        ? renderChineseOnly(model, sections)
-        : createReport(model, sections);
-    return appendGeminiSection(localText, geminiResult);
+    if (route.resultKind === 'structured') {
+        const presentation = route.structuredDensity === 'report'
+            ? {
+                preferredDensity: 'report',
+                initiallyExpanded: ['identifier', 'tokenMeanings', 'naming', 'diagnostics']
+            }
+            : {
+                preferredDensity: 'minimal',
+                initiallyExpanded: []
+            };
+        return createProgrammerResultV1(model, sections, geminiResult, presentation);
+    }
+
+    if (typeof options.setResult === 'function') {
+        return createPotNativeReport(model, sections, geminiResult, config);
+    }
+
+    return appendGeminiSection(createReport(model, sections), geminiResult);
 }
 
 if (typeof module !== 'undefined' && module.exports) {
