@@ -420,9 +420,9 @@ test('serializer 拒绝 Key、请求头、URL、SQL、数据库路径和堆栈�
 
 test('宿主能力只接受 resultSchemas 中大小写敏感的精确 V2 成员', () => {
     assert.equal(routeModule.PLUGIN_RESULT_V2_SCHEMA, V2_SCHEMA);
-    assert.equal(routeModule.hostSupportsPluginResultV2(host(V2_SCHEMA)), true);
-    assert.equal(routeModule.hostSupportsPluginResultV2(host('other.schema', V2_SCHEMA)), true);
-    assert.equal(routeModule.hostSupportsPluginResultV2(host('POT.PLUGIN-RESULT.V2')), false);
+    assert.equal(routeModule.hostSupportsPluginResultV2({ host: host(V2_SCHEMA) }), true);
+    assert.equal(routeModule.hostSupportsPluginResultV2({ host: host('other.schema', V2_SCHEMA) }), true);
+    assert.equal(routeModule.hostSupportsPluginResultV2({ host: host('POT.PLUGIN-RESULT.V2') }), false);
     assert.equal(routeModule.hostSupportsPluginResultV2({ host: { resultSchemas: V2_SCHEMA } }), false);
     assert.equal(routeModule.hostSupportsPluginResultV2({ host: { resultSchemas: [] } }), false);
     assert.equal(routeModule.hostSupportsPluginResultV2({ setResult() {} }), false);
