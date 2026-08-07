@@ -202,7 +202,7 @@ async function translate(text, _from, _to, options = {}) {
         return appendGeminiSection(renderChineseOnly(model, sections), geminiResult);
     }
 
-    if (route.resultKind === 'structured') {
+    if (route.resultKind === 'plugin-result-v2' || route.resultKind === 'structured') {
         const presentation = route.structuredDensity === 'report'
             ? {
                 preferredDensity: 'report',
@@ -212,12 +212,15 @@ async function translate(text, _from, _to, options = {}) {
                 preferredDensity: 'minimal',
                 initiallyExpanded: []
             };
-        return createProgrammerResultV1(
+        const programmerResultV1 = createProgrammerResultV1(
             createStructuredProgrammerModel(model),
             sections,
             geminiResult,
             presentation
         );
+        return route.resultKind === 'plugin-result-v2'
+            ? createPluginResultV2(programmerResultV1)
+            : programmerResultV1;
     }
 
     if (typeof options.setResult === 'function') {
