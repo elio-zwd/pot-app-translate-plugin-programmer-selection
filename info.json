@@ -9,6 +9,9 @@
       "key": "outputStyle",
       "display": "输出格式",
       "type": "select",
+      "group": "basic",
+      "groupDisplay": "基础使用",
+      "description": "选择结构化结果密度、完整报告或直接命名转换。",
       "options": {
         "minimal": "极简结果（默认）",
         "report": "完整分析",
@@ -25,6 +28,8 @@
       "key": "dictionaryMode",
       "display": "本地词典显示",
       "type": "select",
+      "group": "basic",
+      "description": "控制本地编程术语与普通英语词义的展示范围。",
       "options": {
         "both": "编程术语 + 普通词义",
         "programming": "仅编程术语优先",
@@ -35,6 +40,8 @@
       "key": "identifierType",
       "display": "标识符类型",
       "type": "select",
+      "group": "basic",
+      "description": "自动判断或手动指定函数、变量、类、常量与文件名。",
       "options": {
         "auto": "自动判断",
         "function": "函数名",
@@ -49,6 +56,9 @@
       "key": "acronymStyle",
       "display": "缩写格式",
       "type": "select",
+      "group": "result_display",
+      "groupDisplay": "结果与命名",
+      "description": "控制缩写在驼峰命名中的大小写形式。",
       "options": {
         "standard": "标准驼峰（HTTP → Http）",
         "preserve": "保留大写（HTTP → HTTP）"
@@ -58,6 +68,8 @@
       "key": "showNamingConversions",
       "display": "显示命名转换",
       "type": "select",
+      "group": "result_display",
+      "description": "控制完整报告中的五种命名转换区块。",
       "options": {
         "show": "显示（默认）",
         "hide": "不显示"
@@ -67,6 +79,8 @@
       "key": "showStatusMessages",
       "display": "显示状态提示",
       "type": "select",
+      "group": "result_display",
+      "description": "控制词典与 AI 回退等用户可读状态提示。",
       "options": {
         "show": "显示（默认）",
         "hide": "不显示"
@@ -76,6 +90,8 @@
       "key": "aiMode",
       "display": "AI 翻译方式",
       "type": "select",
+      "group": "basic",
+      "description": "关闭 AI、仅补全本地未知词，或每次请求整体语义。",
       "options": {
         "off": "关闭，仅使用本地结果（默认）",
         "unknown_only": "智能补全本地未知词（推荐）",
@@ -85,12 +101,32 @@
     {
       "key": "apiKeyPool",
       "display": "Gemini Key 池（设置页明文，# 前缀禁用）",
-      "type": "input"
+      "type": "input",
+      "group": "ai_credentials",
+      "groupDisplay": "AI 凭据",
+      "description": "支持多个 Key，每行一个；# 前缀表示禁用。界面默认遮罩，secret 仅控制显示，不代表加密存储，也不会发起网络有效性检查。",
+      "secret": true,
+      "multiline": true,
+      "rows": 4,
+      "visibleWhen": {
+        "key": "aiMode",
+        "operator": "notEquals",
+        "value": "off"
+      }
     },
     {
       "key": "maxKeyAttempts",
       "display": "单次最多尝试不同 Key 数",
       "type": "select",
+      "group": "advanced_ai",
+      "groupDisplay": "高级 AI",
+      "groupAdvanced": true,
+      "description": "限制单次逻辑请求最多尝试的不同 Key 数量。",
+      "visibleWhen": {
+        "key": "aiMode",
+        "operator": "notEquals",
+        "value": "off"
+      },
       "options": {
         "v5": "5（默认）",
         "v1": "1",
@@ -103,6 +139,13 @@
       "key": "modelPreset",
       "display": "Gemini 模型",
       "type": "select",
+      "group": "advanced_ai",
+      "description": "选择预设模型，或切换到自定义模型 ID。",
+      "visibleWhen": {
+        "key": "aiMode",
+        "operator": "notEquals",
+        "value": "off"
+      },
       "options": {
         "gemini-3.5-flash-lite": "Gemini 3.5 Flash-Lite（默认，快速低成本）",
         "gemini-3.6-flash": "Gemini 3.6 Flash",
@@ -114,12 +157,26 @@
     {
       "key": "customModel",
       "display": "自定义 Gemini 模型 ID",
-      "type": "input"
+      "type": "input",
+      "group": "advanced_ai",
+      "description": "仅在模型预设选择“自定义模型”时使用。",
+      "visibleWhen": {
+        "key": "modelPreset",
+        "operator": "equals",
+        "value": "custom"
+      }
     },
     {
       "key": "sendScope",
       "display": "Gemini 发送范围",
       "type": "select",
+      "group": "advanced_ai",
+      "description": "仅发送未知 token，或发送完整标识符以获取整体语义。",
+      "visibleWhen": {
+        "key": "aiMode",
+        "operator": "notEquals",
+        "value": "off"
+      },
       "options": {
         "unknown_tokens": "仅 token（默认）",
         "identifier": "完整标识符"
